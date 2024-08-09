@@ -187,7 +187,7 @@ void ReportExceptionAndContinue(const std::exception& ex) noexcept
     }
 }
 
-void ShowExceptionMessageBox(bool enabled)
+void ShowExceptionMessageBox(bool enabled) noexcept
 {
     STACK_TRACE_ENTRY();
 
@@ -257,7 +257,7 @@ auto GetStackTrace() -> string
 #endif
 }
 
-auto GetStackTraceEntry(size_t deep) -> const SourceLocationData*
+auto GetStackTraceEntry(size_t deep) noexcept -> const SourceLocationData*
 {
     NO_STACK_TRACE_ENTRY();
 
@@ -419,16 +419,6 @@ void CreateDumpMessage(string_view appendix, string_view message)
         file.Write(_str("\n"));
         file.Write(traceback);
         file.Write(_str("\n"));
-    }
-}
-
-RefCounter::~RefCounter()
-{
-    try {
-        throw GenericException("Some of pointers still alive", _ptrCounter.load());
-    }
-    catch (const std::exception& ex) {
-        ReportExceptionAndContinue(ex);
     }
 }
 
@@ -791,6 +781,9 @@ extern void* CRTDECL operator new(std::size_t size) noexcept(false)
 #else
     auto* p = rpmalloc(size);
 #endif
+    if (p == nullptr) {
+        throw std::bad_alloc();
+    }
     return p;
 }
 
@@ -803,6 +796,9 @@ extern void* CRTDECL operator new[](std::size_t size) noexcept(false)
 #else
     auto* p = rpmalloc(size);
 #endif
+    if (p == nullptr) {
+        throw std::bad_alloc();
+    }
     return p;
 }
 
@@ -912,6 +908,9 @@ extern void* CRTDECL operator new(std::size_t size, std::align_val_t align) noex
 #else
     auto* p = rpaligned_alloc(static_cast<size_t>(align), size);
 #endif
+    if (p == nullptr) {
+        throw std::bad_alloc();
+    }
     return p;
 }
 
@@ -924,6 +923,9 @@ extern void* CRTDECL operator new[](std::size_t size, std::align_val_t align) no
 #else
     auto* p = rpaligned_alloc(static_cast<size_t>(align), size);
 #endif
+    if (p == nullptr) {
+        throw std::bad_alloc();
+    }
     return p;
 }
 

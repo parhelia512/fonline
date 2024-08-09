@@ -193,13 +193,6 @@ NetBuffer::NetBuffer(size_t buf_len)
     _bufData = std::make_unique<uint8[]>(_bufLen);
 }
 
-auto NetBuffer::IsError() const -> bool
-{
-    STACK_TRACE_ENTRY();
-
-    return _isError;
-}
-
 auto NetBuffer::GetEndPos() const -> size_t
 {
     STACK_TRACE_ENTRY();
@@ -207,18 +200,15 @@ auto NetBuffer::GetEndPos() const -> size_t
     return _bufEndPos;
 }
 
-void NetBuffer::SetError(bool value)
-{
-    STACK_TRACE_ENTRY();
-
-    _isError = value;
-}
-
 auto NetBuffer::GenerateEncryptKey() -> uint
 {
     STACK_TRACE_ENTRY();
 
-    return (GenericUtils::Random(1, 255) << 24) | (GenericUtils::Random(1, 255) << 16) | (GenericUtils::Random(1, 255) << 8) | GenericUtils::Random(1, 255);
+    return // Random 4 byte
+        (GenericUtils::Random(1, 255) << 24) | //
+        (GenericUtils::Random(1, 255) << 16) | //
+        (GenericUtils::Random(1, 255) << 8) | //
+        (GenericUtils::Random(1, 255) << 0);
 }
 
 void NetBuffer::SetEncryptKey(uint seed)
@@ -245,32 +235,36 @@ auto NetBuffer::EncryptKey(int move) -> uint8
     STACK_TRACE_ENTRY();
 
     uint8 key = 0;
+
     if (_encryptActive) {
         key = _encryptKeys[_encryptKeyPos];
         _encryptKeyPos += move;
+
         if (_encryptKeyPos < 0 || _encryptKeyPos >= static_cast<int>(CRYPT_KEYS_COUNT)) {
             _encryptKeyPos %= static_cast<int>(CRYPT_KEYS_COUNT);
+
             if (_encryptKeyPos < 0) {
                 _encryptKeyPos += static_cast<int>(CRYPT_KEYS_COUNT);
             }
         }
     }
+
     return key;
 }
 
-void NetBuffer::ResetBuf()
+void NetBuffer::ResetBuf() noexcept
 {
     STACK_TRACE_ENTRY();
-
-    if (_isError) {
-        return;
-    }
 
     _bufEndPos = 0;
 
     if (_bufLen > _defaultBufLen) {
-        _bufLen = _defaultBufLen;
-        _bufData = std::make_unique<uint8[]>(_bufLen);
+        auto* new_buf = new (std::nothrow) uint8[_defaultBufLen];
+
+        if (new_buf != nullptr) {
+            _bufLen = _defaultBufLen;
+            _bufData = unique_ptr<uint8[]>(new_buf);
+        }
     }
 }
 
@@ -306,10 +300,6 @@ void NetBuffer::CopyBuf(const void* from, void* to, uint8 crypt_key, size_t len)
 
     NON_CONST_METHOD_HINT();
 
-    if (_isError) {
-        return;
-    }
-
     const auto* from_ = static_cast<const uint8*>(from);
     auto* to_ = static_cast<uint8*>(to);
 
@@ -322,7 +312,7 @@ void NetOutBuffer::Push(const void* buf, size_t len)
 {
     STACK_TRACE_ENTRY();
 
-    if (_isError || len == 0) {
+    if (len == 0) {
         return;
     }
 
@@ -338,22 +328,35 @@ void NetOutBuffer::Cut(size_t len)
 {
     STACK_TRACE_ENTRY();
 
-    if (_isError || len == 0) {
+    if (len == 0) {
         return;
     }
 
     if (len > _bufEndPos) {
-        BreakIntoDebugger();
-        _isError = true;
-        return;
+        ResetBuf();
+        throw NetBufferException("Invalid cut length", len, _bufEndPos);
     }
 
     auto* buf = _bufData.get();
+
     for (size_t i = 0; i + len < _bufEndPos; i++) {
         buf[i] = buf[i + len];
     }
 
     _bufEndPos -= len;
+}
+
+void NetOutBuffer::WritePropsData(vector<const uint8*>* props_data, const vector<uint>* props_data_sizes)
+{
+    RUNTIME_ASSERT(props_data->size() == props_data_sizes->size());
+    RUNTIME_ASSERT(props_data->size() <= 0xFFFF);
+    Write<uint16>(static_cast<uint16>(props_data->size()));
+
+    for (size_t i = 0; i < props_data->size(); i++) {
+        const auto data_size = static_cast<uint>(props_data_sizes->at(i));
+        Write<uint>(data_size);
+        Push(props_data->at(i), data_size);
+    }
 }
 
 void NetOutBuffer::StartMsg(uint msg)
@@ -401,7 +404,7 @@ void NetOutBuffer::EndMsg()
     RUNTIME_ASSERT(actual_msg_len == intended_msg_len);
 }
 
-void NetInBuffer::ResetBuf()
+void NetInBuffer::ResetBuf() noexcept
 {
     STACK_TRACE_ENTRY();
 
@@ -414,7 +417,7 @@ void NetInBuffer::AddData(const void* buf, size_t len)
 {
     STACK_TRACE_ENTRY();
 
-    if (_isError || len == 0) {
+    if (len == 0) {
         return;
     }
 
@@ -437,20 +440,13 @@ void NetInBuffer::Pop(void* buf, size_t len)
 {
     STACK_TRACE_ENTRY();
 
-    if (_isError) {
-        std::memset(buf, 0, len);
-        return;
-    }
-
     if (len == 0) {
         return;
     }
 
     if (_bufReadPos + len > _bufEndPos) {
-        BreakIntoDebugger();
-        _isError = true;
-        std::memset(buf, 0, len);
-        return;
+        ResetBuf();
+        throw NetBufferException("Invalid read length", len, _bufReadPos, _bufEndPos);
     }
 
     CopyBuf(_bufData.get() + _bufReadPos, buf, EncryptKey(static_cast<int>(len)), len);
@@ -461,14 +457,9 @@ void NetInBuffer::ShrinkReadBuf()
 {
     STACK_TRACE_ENTRY();
 
-    if (_isError) {
-        return;
-    }
-
     if (_bufReadPos > _bufEndPos) {
-        BreakIntoDebugger();
-        _isError = true;
-        return;
+        ResetBuf();
+        throw NetBufferException("Invalid shrink pos", _bufReadPos, _bufEndPos);
     }
 
     if (_bufReadPos >= _bufEndPos) {
@@ -477,12 +468,24 @@ void NetInBuffer::ShrinkReadBuf()
         }
     }
     else if (_bufReadPos != 0) {
-        for (auto i = _bufReadPos; i < _bufEndPos; i++) {
+        for (size_t i = _bufReadPos; i < _bufEndPos; i++) {
             _bufData[i - _bufReadPos] = _bufData[i];
         }
 
         _bufEndPos -= _bufReadPos;
         _bufReadPos = 0;
+    }
+}
+
+void NetInBuffer::ReadPropsData(vector<vector<uint8>>& props_data)
+{
+    const auto data_count = Read<uint16>();
+    props_data.resize(data_count);
+
+    for (uint16 i = 0; i < data_count; i++) {
+        const auto data_size = Read<uint>();
+        props_data[i].resize(data_size);
+        Pop(props_data[i].data(), data_size);
     }
 }
 
@@ -492,15 +495,12 @@ auto NetInBuffer::ReadHashedString(const HashResolver& hash_resolver) -> hstring
 
     const auto h = Read<hstring::hash_t>();
 
-    hstring result;
+    bool failed = false;
+    const hstring result = hash_resolver.ResolveHash(h, &failed);
 
-    if (!_isError) {
-        bool failed = false;
-        result = hash_resolver.ResolveHash(h, &failed);
-        if (failed) {
-            BreakIntoDebugger();
-            _isError = true;
-        }
+    if (failed) {
+        ResetBuf();
+        throw NetBufferException("Can't resolve received hash", h);
     }
 
     return result;
@@ -510,11 +510,8 @@ auto NetInBuffer::NeedProcess() -> bool
 {
     STACK_TRACE_ENTRY();
 
-    if (_isError) {
-        return false;
-    }
-
     uint msg = 0;
+
     if (_bufReadPos + sizeof(msg) > _bufEndPos) {
         return false;
     }
@@ -525,10 +522,8 @@ auto NetInBuffer::NeedProcess() -> bool
 
     // Unknown message
     if (msg_len == 0) {
-        BreakIntoDebugger();
         ResetBuf();
-        _isError = true;
-        return false;
+        throw NetBufferException("Unknown message", msg);
     }
 
     // Fixed size
@@ -551,10 +546,6 @@ auto NetInBuffer::NeedProcess() -> bool
 void NetInBuffer::SkipMsg(uint msg)
 {
     STACK_TRACE_ENTRY();
-
-    if (_isError) {
-        return;
-    }
 
     _bufReadPos -= sizeof(msg);
     EncryptKey(-static_cast<int>(sizeof(msg)));

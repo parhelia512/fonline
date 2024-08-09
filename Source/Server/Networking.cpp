@@ -103,9 +103,9 @@ public:
         _outBuf.resize(_settings.NetBufferSize);
 
         if (!settings.DisableZlibCompression) {
-            _zStream.zalloc = [](void*, unsigned int items, unsigned int size) { return std::calloc(items, size); };
-            _zStream.zfree = [](void*, void* address) { std::free(address); };
-            _zStream.opaque = nullptr;
+            _zStream = {};
+            _zStream.zalloc = [](voidpf, uInt items, uInt size) -> void* { return new uint8[static_cast<size_t>(items) * size]; };
+            _zStream.zfree = [](voidpf, voidpf address) { delete[] static_cast<uint8*>(address); };
 
             const auto result = deflateInit(&_zStream, Z_BEST_SPEED);
             RUNTIME_ASSERT(result == Z_OK);
@@ -177,7 +177,8 @@ public:
 
         // Nothing to send
         {
-            std::lock_guard locker(OutBufLocker);
+            std::scoped_lock locker(OutBufLocker);
+
             if (OutBuf.IsEmpty()) {
                 return;
             }
@@ -204,7 +205,7 @@ protected:
     {
         STACK_TRACE_ENTRY();
 
-        std::lock_guard locker(OutBufLocker);
+        std::scoped_lock locker(OutBufLocker);
 
         if (OutBuf.IsEmpty()) {
             return nullptr;
@@ -263,7 +264,7 @@ protected:
     {
         STACK_TRACE_ENTRY();
 
-        std::lock_guard locker(InBufLocker);
+        std::scoped_lock locker(InBufLocker);
 
         if (InBuf.GetReadPos() + len < _settings.FloodSize) {
             InBuf.AddData(buf, len);

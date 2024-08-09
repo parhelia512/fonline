@@ -273,19 +273,8 @@ FOClient::~FOClient()
 {
     STACK_TRACE_ENTRY();
 
-    if (_chosen != nullptr || CurMap != nullptr || _curPlayer != nullptr || _curLocation != nullptr) {
-        BreakIntoDebugger();
-    }
-
-    delete ScriptSys;
-}
-
-void FOClient::Shutdown()
-{
-    STACK_TRACE_ENTRY();
-
-    App->Render.SetRenderTarget(nullptr);
-    _conn.Disconnect();
+    safe_call([] { App->Render.SetRenderTarget(nullptr); });
+    safe_call([this] { _conn.Disconnect(); });
 
     if (_chosen != nullptr) {
         _chosen->Release();
@@ -293,21 +282,24 @@ void FOClient::Shutdown()
     }
 
     if (CurMap != nullptr) {
-        CurMap->DestroySelf();
+        safe_call([this] { CurMap->DestroySelf(); });
         CurMap = nullptr;
     }
 
     if (_curPlayer != nullptr) {
-        _curPlayer->DestroySelf();
+        safe_call([this] { _curPlayer->DestroySelf(); });
         _curPlayer = nullptr;
     }
 
     if (_curLocation != nullptr) {
-        _curLocation->DestroySelf();
+        safe_call([this] { _curLocation->DestroySelf(); });
         _curLocation = nullptr;
     }
 
-    DestroyInnerEntities();
+    safe_call([this] { DestroyInnerEntities(); });
+
+    delete ScriptSys;
+    ScriptSys = nullptr;
 }
 
 auto FOClient::ResolveCritterAnimation(hstring model_name, CritterStateAnim state_anim, CritterActionAnim action_anim, uint& pass, uint& flags, int& ox, int& oy, string& anim_name) -> bool
@@ -490,7 +482,7 @@ void FOClient::MainLoop()
 
     {
         SprMngr.BeginScene({0, 0, 0});
-        auto end_scene = ScopeCallback([this] { SprMngr.EndScene(); });
+        auto end_scene = ScopeCallback([this]() noexcept { safe_call([this] { SprMngr.EndScene(); }); });
 
         // Quake effect
         ProcessScreenEffectQuake();
@@ -967,17 +959,13 @@ void FOClient::Net_OnUpdateFilesResponse()
     const auto outdated = _conn.InBuf.Read<bool>();
     const auto data_size = _conn.InBuf.Read<uint>();
 
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
-
     vector<uint8> data;
     data.resize(data_size);
     _conn.InBuf.Pop(data.data(), data_size);
 
     if (!outdated) {
-        NET_READ_PROPERTIES(_conn.InBuf, _globalsPropertiesData);
+        _conn.InBuf.ReadPropsData(_globalsPropertiesData);
     }
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     if (outdated) {
         throw ResourcesOutdatedException("Binary outdated");
@@ -1046,11 +1034,8 @@ void FOClient::Net_OnLoginSuccess()
     [[maybe_unused]] const auto msg_len = _conn.InBuf.Read<uint>();
     const auto encrypt_key = _conn.InBuf.Read<uint>();
     const auto player_id = _conn.InBuf.Read<ident_t>();
-
-    NET_READ_PROPERTIES(_conn.InBuf, _globalsPropertiesData);
-    NET_READ_PROPERTIES(_conn.InBuf, _playerPropertiesData);
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
+    _conn.InBuf.ReadPropsData(_globalsPropertiesData);
+    _conn.InBuf.ReadPropsData(_playerPropertiesData);
 
     RestoreData(_globalsPropertiesData);
 
@@ -1061,8 +1046,6 @@ void FOClient::Net_OnLoginSuccess()
 
     RUNTIME_ASSERT(!HasInnerEntities());
     ReceiveCustomEntities(this);
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     _conn.InBuf.SetEncryptKey(encrypt_key);
 
@@ -1092,10 +1075,7 @@ void FOClient::Net_OnAddCritter()
     const auto is_controlled_by_player = _conn.InBuf.Read<bool>();
     const auto is_player_offline = _conn.InBuf.Read<bool>();
     const auto is_chosen = _conn.InBuf.Read<bool>();
-
-    NET_READ_PROPERTIES(_conn.InBuf, _tempPropertiesData);
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
+    _conn.InBuf.ReadPropsData(_tempPropertiesData);
 
     CritterView* cr;
     CritterHexView* hex_cr;
@@ -1130,7 +1110,6 @@ void FOClient::Net_OnAddCritter()
     }
 
     ReceiveCustomEntities(cr);
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     cr->SetHexOffsX(hex_ox);
     cr->SetHexOffsY(hex_oy);
@@ -1152,7 +1131,7 @@ void FOClient::Net_OnAddCritter()
         const auto item_id = _conn.InBuf.Read<ident_t>();
         const auto item_pid = _conn.InBuf.Read<hstring>(*this);
         const auto item_slot = _conn.InBuf.Read<CritterItemSlot>();
-        NET_READ_PROPERTIES(_conn.InBuf, _tempPropertiesData);
+        _conn.InBuf.ReadPropsData(_tempPropertiesData);
 
         const auto* proto_item = ProtoMngr.GetProtoItem(item_pid);
         RUNTIME_ASSERT(proto_item);
@@ -1161,8 +1140,6 @@ void FOClient::Net_OnAddCritter()
 
         ReceiveCustomEntities(item);
     }
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     // Initial attachment
     const auto is_attached = _conn.InBuf.Read<bool>();
@@ -1191,8 +1168,6 @@ void FOClient::Net_OnAddCritter()
             hex_cr->MoveAttachedCritters();
         }
     }
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     if ((hex_ox != 0 || hex_oy != 0) && hex_cr != nullptr) {
         hex_cr->RefreshOffs();
@@ -1232,8 +1207,6 @@ void FOClient::Net_OnRemoveCritter()
     STACK_TRACE_ENTRY();
 
     const auto cr_id = _conn.InBuf.Read<ident_t>();
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     if (CurMap != nullptr) {
         auto* cr = CurMap->GetCritter(cr_id);
@@ -1282,8 +1255,6 @@ void FOClient::Net_OnText()
     const auto text = _conn.InBuf.Read<string>();
     const auto unsafe_text = _conn.InBuf.Read<bool>();
 
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
-
     if (how_say == SAY_FLASH_WINDOW) {
         FlashGameWindow();
         return;
@@ -1315,8 +1286,6 @@ void FOClient::Net_OnTextMsg(bool with_lexems)
     if (with_lexems) {
         lexems = _conn.InBuf.Read<string>();
     }
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     if (how_say == SAY_FLASH_WINDOW) {
         FlashGameWindow();
@@ -1467,8 +1436,6 @@ void FOClient::Net_OnMapText()
     const auto text = _conn.InBuf.Read<string>();
     const auto unsafe_text = _conn.InBuf.Read<bool>();
 
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
-
     if (CurMap == nullptr) {
         BreakIntoDebugger();
         return;
@@ -1498,8 +1465,6 @@ void FOClient::Net_OnMapTextMsg()
     const auto text_pack = _conn.InBuf.Read<TextPackName>();
     const auto str_num = _conn.InBuf.Read<TextPackKey>();
 
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
-
     auto str = copy(_curLang.GetTextPack(text_pack).GetStr(str_num));
     FormatTags(str, GetChosen(), nullptr, "");
     OnMapText(str, hx, hy, color);
@@ -1517,8 +1482,6 @@ void FOClient::Net_OnMapTextMsgLex()
     const auto str_num = _conn.InBuf.Read<TextPackKey>();
     const auto lexems = _conn.InBuf.Read<string>();
 
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
-
     auto str = copy(_curLang.GetTextPack(text_pack).GetStr(str_num));
     FormatTags(str, GetChosen(), nullptr, lexems);
     OnMapText(str, hx, hy, color);
@@ -1530,8 +1493,6 @@ void FOClient::Net_OnCritterDir()
 
     const auto cr_id = _conn.InBuf.Read<ident_t>();
     const auto dir_angle = _conn.InBuf.Read<int16>();
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     if (CurMap == nullptr) {
         BreakIntoDebugger();
@@ -1572,8 +1533,6 @@ void FOClient::Net_OnCritterMove()
 
     const auto end_hex_ox = _conn.InBuf.Read<int16>();
     const auto end_hex_oy = _conn.InBuf.Read<int16>();
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     if (CurMap == nullptr) {
         BreakIntoDebugger();
@@ -1670,8 +1629,6 @@ void FOClient::Net_OnCritterMoveSpeed()
     const auto cr_id = _conn.InBuf.Read<ident_t>();
     const auto speed = _conn.InBuf.Read<uint16>();
 
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
-
     if (CurMap == nullptr) {
         BreakIntoDebugger();
         return;
@@ -1722,7 +1679,7 @@ void FOClient::Net_OnCritterAction()
     if (is_context_item) {
         const auto item_id = _conn.InBuf.Read<ident_t>();
         const auto item_pid = _conn.InBuf.Read<hstring>(*this);
-        NET_READ_PROPERTIES(_conn.InBuf, _tempPropertiesData);
+        _conn.InBuf.ReadPropsData(_tempPropertiesData);
 
         const auto* proto = ProtoMngr.GetProtoItem(item_pid);
         RUNTIME_ASSERT(proto);
@@ -1732,8 +1689,6 @@ void FOClient::Net_OnCritterAction()
 
         ReceiveCustomEntities(context_item);
     }
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     if (CurMap == nullptr) {
         BreakIntoDebugger();
@@ -1772,7 +1727,7 @@ void FOClient::Net_OnCritterMoveItem()
     if (is_moved_item) {
         const auto item_id = _conn.InBuf.Read<ident_t>();
         const auto item_pid = _conn.InBuf.Read<hstring>(*this);
-        NET_READ_PROPERTIES(_conn.InBuf, _tempPropertiesData);
+        _conn.InBuf.ReadPropsData(_tempPropertiesData);
 
         const auto* proto = ProtoMngr.GetProtoItem(item_pid);
         RUNTIME_ASSERT(proto);
@@ -1782,8 +1737,6 @@ void FOClient::Net_OnCritterMoveItem()
 
         ReceiveCustomEntities(moved_item);
     }
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     CritterView* cr;
 
@@ -1796,7 +1749,18 @@ void FOClient::Net_OnCritterMoveItem()
 
     if (cr == nullptr) {
         BreakIntoDebugger();
-        _conn.InBuf.SetError(true);
+
+        // Skip rest data
+        const auto items_count = _conn.InBuf.Read<uint>();
+
+        for (uint i = 0; i < items_count; i++) {
+            (void)_conn.InBuf.Read<ident_t>();
+            (void)_conn.InBuf.Read<hstring>(*this);
+            (void)_conn.InBuf.Read<CritterItemSlot>();
+            _conn.InBuf.ReadPropsData(_tempPropertiesData);
+            ReceiveCustomEntities(nullptr);
+        }
+
         return;
     }
 
@@ -1812,7 +1776,7 @@ void FOClient::Net_OnCritterMoveItem()
             const auto item_id = _conn.InBuf.Read<ident_t>();
             const auto item_pid = _conn.InBuf.Read<hstring>(*this);
             const auto item_slot = _conn.InBuf.Read<CritterItemSlot>();
-            NET_READ_PROPERTIES(_conn.InBuf, _tempPropertiesData);
+            _conn.InBuf.ReadPropsData(_tempPropertiesData);
 
             const auto* proto_item = ProtoMngr.GetProtoItem(item_pid);
             RUNTIME_ASSERT(proto_item);
@@ -1821,8 +1785,6 @@ void FOClient::Net_OnCritterMoveItem()
 
             ReceiveCustomEntities(item);
         }
-
-        CHECK_SERVER_IN_BUF_ERROR(_conn);
     }
 
     if (auto* hex_cr = dynamic_cast<CritterHexView*>(cr); hex_cr != nullptr) {
@@ -1866,7 +1828,7 @@ void FOClient::Net_OnCritterAnimate()
     if (is_context_item) {
         const auto item_id = _conn.InBuf.Read<ident_t>();
         const auto item_pid = _conn.InBuf.Read<hstring>(*this);
-        NET_READ_PROPERTIES(_conn.InBuf, _tempPropertiesData);
+        _conn.InBuf.ReadPropsData(_tempPropertiesData);
 
         const auto* proto = ProtoMngr.GetProtoItem(item_pid);
         RUNTIME_ASSERT(proto);
@@ -1876,8 +1838,6 @@ void FOClient::Net_OnCritterAnimate()
 
         ReceiveCustomEntities(context_item);
     }
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     if (CurMap == nullptr) {
         BreakIntoDebugger();
@@ -1905,8 +1865,6 @@ void FOClient::Net_OnCritterSetAnims()
     const auto cond = _conn.InBuf.Read<CritterCondition>();
     const auto state_anim = _conn.InBuf.Read<CritterStateAnim>();
     const auto action_anim = _conn.InBuf.Read<CritterActionAnim>();
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     CritterView* cr;
     CritterHexView* hex_cr;
@@ -1960,8 +1918,6 @@ void FOClient::Net_OnCritterTeleport()
     const auto to_hx = _conn.InBuf.Read<uint16>();
     const auto to_hy = _conn.InBuf.Read<uint16>();
 
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
-
     if (CurMap == nullptr) {
         BreakIntoDebugger();
         return;
@@ -1994,8 +1950,6 @@ void FOClient::Net_OnCritterPos()
     const auto hex_ox = _conn.InBuf.Read<int16>();
     const auto hex_oy = _conn.InBuf.Read<int16>();
     const auto dir_angle = _conn.InBuf.Read<int16>();
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     if (CurMap == nullptr) {
         BreakIntoDebugger();
@@ -2048,8 +2002,6 @@ void FOClient::Net_OnCritterAttachments()
         attached_critters[i] = _conn.InBuf.Read<ident_t>();
     }
 
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
-
     if (CurMap != nullptr) {
         auto* cr = CurMap->GetCritter(cr_id);
         if (cr == nullptr) {
@@ -2099,16 +2051,17 @@ void FOClient::Net_OnChosenAddItem()
     const auto item_id = _conn.InBuf.Read<ident_t>();
     const auto item_pid = _conn.InBuf.Read<hstring>(*this);
     const auto item_slot = _conn.InBuf.Read<CritterItemSlot>();
-
-    NET_READ_PROPERTIES(_conn.InBuf, _tempPropertiesData);
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
+    _conn.InBuf.ReadPropsData(_tempPropertiesData);
 
     auto* chosen = GetChosen();
+
     if (chosen == nullptr) {
-        WriteLog("Chosen is not created in add item");
+        WriteLog("Chosen is not created on add item");
         BreakIntoDebugger();
-        _conn.InBuf.SetError(true);
+
+        // Skip rest data
+        ReceiveCustomEntities(nullptr);
+
         return;
     }
 
@@ -2122,7 +2075,6 @@ void FOClient::Net_OnChosenAddItem()
     auto* item = chosen->AddInvItem(item_id, proto_item, item_slot, _tempPropertiesData);
 
     ReceiveCustomEntities(item);
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     if (CurMap != nullptr) {
         CurMap->RebuildFog();
@@ -2140,8 +2092,6 @@ void FOClient::Net_OnChosenRemoveItem()
     STACK_TRACE_ENTRY();
 
     const auto item_id = _conn.InBuf.Read<ident_t>();
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     auto* chosen = GetChosen();
     if (chosen == nullptr) {
@@ -2180,13 +2130,14 @@ void FOClient::Net_OnAddItemOnMap()
     const auto hy = _conn.InBuf.Read<uint16>();
     const auto item_id = _conn.InBuf.Read<ident_t>();
     const auto item_pid = _conn.InBuf.Read<hstring>(*this);
-    NET_READ_PROPERTIES(_conn.InBuf, _tempPropertiesData);
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
+    _conn.InBuf.ReadPropsData(_tempPropertiesData);
 
     if (CurMap == nullptr) {
         BreakIntoDebugger();
-        _conn.InBuf.SetError(true);
+
+        // Skip rest data
+        ReceiveCustomEntities(nullptr);
+
         return;
     }
 
@@ -2194,7 +2145,6 @@ void FOClient::Net_OnAddItemOnMap()
     RUNTIME_ASSERT(item);
 
     ReceiveCustomEntities(item);
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     if (_screenModeMain != SCREEN_WAIT) {
         item->FadeUp();
@@ -2208,8 +2158,6 @@ void FOClient::Net_OnRemoveItemFromMap()
     STACK_TRACE_ENTRY();
 
     const auto item_id = _conn.InBuf.Read<ident_t>();
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     if (CurMap == nullptr) {
         BreakIntoDebugger();
@@ -2238,8 +2186,6 @@ void FOClient::Net_OnAnimateItem()
     const auto looped = _conn.InBuf.Read<bool>();
     const auto reversed = _conn.InBuf.Read<bool>();
 
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
-
     if (CurMap == nullptr) {
         BreakIntoDebugger();
         return;
@@ -2260,8 +2206,6 @@ void FOClient::Net_OnEffect()
     const auto hy = _conn.InBuf.Read<uint16>();
     const auto radius = _conn.InBuf.Read<uint16>();
     RUNTIME_ASSERT(radius < MAX_HEX_OFFSET);
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     if (CurMap == nullptr) {
         BreakIntoDebugger();
@@ -2297,8 +2241,6 @@ void FOClient::Net_OnFlyEffect()
     auto eff_cr2_hx = _conn.InBuf.Read<uint16>();
     auto eff_cr2_hy = _conn.InBuf.Read<uint16>();
 
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
-
     if (CurMap == nullptr) {
         BreakIntoDebugger();
         return;
@@ -2327,8 +2269,6 @@ void FOClient::Net_OnPlaySound()
     // Todo: synchronize effects showing (for example shot and kill)
     [[maybe_unused]] const auto synchronize_cr_id = _conn.InBuf.Read<uint>();
     const auto sound_name = _conn.InBuf.Read<string>();
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     SndMngr.PlaySound(ResMngr.GetSoundNames(), sound_name);
 }
@@ -2431,8 +2371,6 @@ void FOClient::Net_OnProperty(uint data_size)
         }
     }
 
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
-
     Entity* entity = nullptr;
 
     switch (type) {
@@ -2526,8 +2464,6 @@ void FOClient::Net_OnChosenTalk()
     const auto talk_dlg_id = _conn.InBuf.Read<hstring>(*this);
     const auto count_answ = _conn.InBuf.Read<uint8>();
 
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
-
     if (count_answ == 0) {
         if (IsScreenPresent(SCREEN_DIALOG)) {
             HideScreen(SCREEN_DIALOG);
@@ -2537,8 +2473,6 @@ void FOClient::Net_OnChosenTalk()
     }
 
     const auto lexems = _conn.InBuf.Read<string>();
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     if (CurMap == nullptr) {
         BreakIntoDebugger();
@@ -2555,8 +2489,6 @@ void FOClient::Net_OnChosenTalk()
         answers_texts.push_back(answ_text_id);
     }
 
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
-
     auto str = copy(_curLang.GetTextPack(TextPackName::Dialogs).GetStr(text_id));
     FormatTags(str, GetChosen(), npc, lexems);
     const auto text_to_script = str;
@@ -2568,8 +2500,6 @@ void FOClient::Net_OnChosenTalk()
     }
 
     const auto talk_time = _conn.InBuf.Read<uint>();
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     map<string, any_t> params;
     params["TalkerIsNpc"] = any_t {_str("{}", is_npc ? 1 : 0).str()};
@@ -2591,8 +2521,6 @@ void FOClient::Net_OnTimeSync()
     const auto minute = _conn.InBuf.Read<uint16>();
     const auto second = _conn.InBuf.Read<uint16>();
     const auto multiplier = _conn.InBuf.Read<uint16>();
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     GameTime.Reset(year, month, day, hour, minute, second, multiplier);
 
@@ -2619,11 +2547,9 @@ void FOClient::Net_OnLoadMap()
     const auto map_index_in_loc = _conn.InBuf.Read<uint8>();
 
     if (map_pid) {
-        NET_READ_PROPERTIES(_conn.InBuf, _tempPropertiesData);
-        NET_READ_PROPERTIES(_conn.InBuf, _tempPropertiesDataExt);
+        _conn.InBuf.ReadPropsData(_tempPropertiesData);
+        _conn.InBuf.ReadPropsData(_tempPropertiesDataExt);
     }
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     OnMapUnload.Fire();
 
@@ -2655,7 +2581,6 @@ void FOClient::Net_OnLoadMap()
 
         ReceiveCustomEntities(_curLocation);
         ReceiveCustomEntities(CurMap);
-        CHECK_SERVER_IN_BUF_ERROR(_conn);
 
         WriteLog("Local map loaded");
     }
@@ -2674,8 +2599,6 @@ void FOClient::Net_OnGlobalInfo()
 
     [[maybe_unused]] const auto msg_len = _conn.InBuf.Read<uint>();
     const auto info_flags = _conn.InBuf.Read<uint8>();
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     if (IsBitSet(info_flags, GM_INFO_LOCATIONS)) {
         _worldmapLoc.clear();
@@ -2738,8 +2661,6 @@ void FOClient::Net_OnGlobalInfo()
 
         _worldmapFog.Set2Bit(zx, zy, fog);
     }
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 }
 
 void FOClient::Net_OnSomeItems()
@@ -2750,15 +2671,13 @@ void FOClient::Net_OnSomeItems()
     const auto context_param = any_t {_conn.InBuf.Read<string>()};
     const auto items_count = _conn.InBuf.Read<uint>();
 
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
-
     vector<ItemView*> items;
     items.reserve(items_count);
 
     for (uint i = 0; i < items_count; i++) {
         const auto item_id = _conn.InBuf.Read<ident_t>();
         const auto pid = _conn.InBuf.Read<hstring>(*this);
-        NET_READ_PROPERTIES(_conn.InBuf, _tempPropertiesData);
+        _conn.InBuf.ReadPropsData(_tempPropertiesData);
         RUNTIME_ASSERT(item_id);
 
         const auto* proto = ProtoMngr.GetProtoItem(pid);
@@ -2771,8 +2690,6 @@ void FOClient::Net_OnSomeItems()
 
         items.emplace_back(item);
     }
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     OnReceiveItems.Fire(items, context_param);
 
@@ -2793,8 +2710,6 @@ void FOClient::Net_OnAutomapsInfo()
     }
 
     const auto locs_count = _conn.InBuf.Read<uint16>();
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     for (uint16 i = 0; i < locs_count; i++) {
         const auto loc_id = _conn.InBuf.Read<ident_t>();
@@ -2830,8 +2745,6 @@ void FOClient::Net_OnAutomapsInfo()
             }
         }
     }
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 }
 
 void FOClient::Net_OnViewMap()
@@ -2842,8 +2755,6 @@ void FOClient::Net_OnViewMap()
     const auto hy = _conn.InBuf.Read<uint16>();
     const auto loc_id = _conn.InBuf.Read<ident_t>();
     const auto loc_ent = _conn.InBuf.Read<uint>();
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     if (CurMap == nullptr) {
         BreakIntoDebugger();
@@ -2867,8 +2778,6 @@ void FOClient::Net_OnRemoteCall()
     [[maybe_unused]] const auto msg_len = _conn.InBuf.Read<uint>();
     const auto rpc_num = _conn.InBuf.Read<uint>();
 
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
-
     ScriptSys->HandleRemoteCall(rpc_num, _curPlayer);
 }
 
@@ -2881,10 +2790,7 @@ void FOClient::Net_OnAddCustomEntity()
     const auto holder_entry = _conn.InBuf.Read<hstring>(*this);
     const auto id = _conn.InBuf.Read<ident_t>();
     const auto pid = _conn.InBuf.Read<hstring>(*this);
-
-    NET_READ_PROPERTIES(_conn.InBuf, _tempPropertiesDataCustomEntity);
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
+    _conn.InBuf.ReadPropsData(_tempPropertiesDataCustomEntity);
 
     Entity* holder;
 
@@ -2910,8 +2816,6 @@ void FOClient::Net_OnRemoveCustomEntity()
     STACK_TRACE_ENTRY();
 
     const auto id = _conn.InBuf.Read<ident_t>();
-
-    CHECK_SERVER_IN_BUF_ERROR(_conn);
 
     auto* entity = GetEntity(id);
 
@@ -2965,11 +2869,16 @@ void FOClient::ReceiveCustomEntities(Entity* holder)
         for (uint j = 0; j < entities_count; j++) {
             const auto id = _conn.InBuf.Read<ident_t>();
             const auto pid = _conn.InBuf.Read<hstring>(*this);
-            NET_READ_PROPERTIES(_conn.InBuf, _tempPropertiesDataCustomEntity);
+            _conn.InBuf.ReadPropsData(_tempPropertiesDataCustomEntity);
 
-            auto* entity = CreateCustomEntityView(holder, entry, id, pid, _tempPropertiesDataCustomEntity);
+            if (holder != nullptr) {
+                auto* entity = CreateCustomEntityView(holder, entry, id, pid, _tempPropertiesDataCustomEntity);
 
-            ReceiveCustomEntities(entity);
+                ReceiveCustomEntities(entity);
+            }
+            else {
+                ReceiveCustomEntities(nullptr);
+            }
         }
     }
 }

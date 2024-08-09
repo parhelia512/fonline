@@ -38,6 +38,8 @@
 // ReSharper disable once CppUnusedIncludeDirective
 #include "NetProtocol-Include.h"
 
+DECLARE_EXCEPTION(NetBufferException);
+
 class NetBuffer
 {
 public:
@@ -52,21 +54,18 @@ public:
     auto operator=(NetBuffer&&) noexcept -> NetBuffer& = default;
     virtual ~NetBuffer() = default;
 
-    [[nodiscard]] auto IsError() const -> bool;
     [[nodiscard]] auto GetData() -> uint8*;
     [[nodiscard]] auto GetEndPos() const -> size_t;
 
-    void SetError(bool value);
     static auto GenerateEncryptKey() -> uint;
     void SetEncryptKey(uint seed);
-    virtual void ResetBuf();
+    virtual void ResetBuf() noexcept;
     void GrowBuf(size_t len);
 
 protected:
     auto EncryptKey(int move) -> uint8;
     void CopyBuf(const void* from, void* to, uint8 crypt_key, size_t len);
 
-    bool _isError {};
     unique_ptr<uint8[]> _bufData {};
     size_t _defaultBufLen {};
     size_t _bufLen {};
@@ -90,7 +89,7 @@ public:
     auto operator=(NetOutBuffer&&) noexcept -> NetOutBuffer& = default;
     ~NetOutBuffer() override = default;
 
-    [[nodiscard]] auto IsEmpty() const -> bool { return _bufEndPos == 0u; }
+    [[nodiscard]] auto IsEmpty() const -> bool { return _bufEndPos == 0; }
 
     void Push(const void* buf, size_t len);
     void Cut(size_t len);
@@ -123,6 +122,8 @@ public:
         Push(&hash, sizeof(hash));
     }
 
+    void WritePropsData(vector<const uint8*>* props_data, const vector<uint>* props_data_sizes);
+
     void StartMsg(uint msg);
     void EndMsg();
 
@@ -154,7 +155,7 @@ public:
     void SkipMsg(uint msg);
     void ShrinkReadBuf();
     void Pop(void* buf, size_t len);
-    void ResetBuf() override;
+    void ResetBuf() noexcept override;
 
     template<typename T, std::enable_if_t<std::is_arithmetic_v<T> || std::is_enum_v<T>, int> = 0>
     [[nodiscard]] auto Read() -> T
@@ -188,6 +189,8 @@ public:
     {
         return ReadHashedString(hash_resolver);
     }
+
+    void ReadPropsData(vector<vector<uint8>>& props_data);
 
 private:
     [[nodiscard]] auto ReadHashedString(const HashResolver& hash_resolver) -> hstring;
