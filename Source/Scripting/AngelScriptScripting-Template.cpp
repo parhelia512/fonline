@@ -585,7 +585,7 @@ static void AngelScriptBeginCall(asIScriptContext* ctx, asIScriptFunction* func,
         PushStackTrace(storage.SrcLoc);
 
 #if FO_TRACY
-        const auto tracy_srcloc = ___tracy_alloc_srcloc(storage.SrcLoc.line, storage.FileBuf.data(), storage.FileBufLen, storage.FuncBuf.data(), storage.FuncBufLen);
+        const auto tracy_srcloc = ___tracy_alloc_srcloc(storage.SrcLoc.line, storage.FileBuf.data(), storage.FileBufLen, storage.FuncBuf.data(), storage.FuncBufLen, 0);
         const auto tracy_ctx = ___tracy_emit_zone_begin_alloc(tracy_srcloc, 1);
         ctx_ext.TracyExecutionCalls.emplace_back(tracy_ctx);
 #endif
@@ -596,7 +596,7 @@ static void AngelScriptBeginCall(asIScriptContext* ctx, asIScriptFunction* func,
         PushStackTrace(storage.SrcLoc);
 
 #if FO_TRACY
-        const auto tracy_srcloc = ___tracy_alloc_srcloc(storage.SrcLoc.line, storage.FileBuf.data(), storage.FileBufLen, storage.FuncBuf.data(), storage.FuncBufLen);
+        const auto tracy_srcloc = ___tracy_alloc_srcloc(storage.SrcLoc.line, storage.FileBuf.data(), storage.FileBufLen, storage.FuncBuf.data(), storage.FuncBufLen, 0);
         const auto tracy_ctx = ___tracy_emit_zone_begin_alloc(tracy_srcloc, 1);
         ctx_ext.TracyExecutionCalls.emplace_back(tracy_ctx);
 #endif
@@ -4379,7 +4379,7 @@ void SCRIPTING_CLASS::InitAngelScriptScripting(INIT_ARGS)
 #define BIND_REMOTE_CALL_RECEIVER(name, func_entry, as_func_decl) \
     RUNTIME_ASSERT(_rpcReceivers.count(name##_hash) == 0); \
     if (auto* func = engine->GetModuleByIndex(0)->GetFunctionByDecl(as_func_decl); func != nullptr) { \
-        _rpcReceivers.emplace(name##_hash, [func = RefCountHolder(func)](Entity* entity) { func_entry(REMOTE_CALL_RECEIVER_ENTITY, func.get()); }); \
+        _rpcReceivers.emplace(name##_hash, [func = RefCountHolder(func)]([[maybe_unused]] Entity* entity) { func_entry(REMOTE_CALL_RECEIVER_ENTITY, func.get()); }); \
     } \
     else { \
         throw ScriptInitException("Remote call function not found", as_func_decl); \

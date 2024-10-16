@@ -106,10 +106,11 @@ if not [%BUILD_TOOLSET%] == [] (
 ) else (
     cmake -A %BUILD_ARCH% -C "%FO_ENGINE_ROOT%\BuildTool\%BUILD_CACHE%" %BUILD_TARGET% "%FO_PROJECT_ROOT%"
 )
-cmake --build . --config Debug
 
-exit /B
+cmake --build . --config Debug --parallel
+
+exit /b
 
 :NORMALIZEPATH
   set RETVAL=%~f1
-  exit /B
+  exit /b
