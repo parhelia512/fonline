@@ -1269,7 +1269,7 @@ void MapManager::Transfer(Critter* cr, Map* map, mpos hex, uint8 dir, optional<i
         if (cr->IsDestroyed()) {
             return;
         }
-        if (map->IsDestroyed()) {
+        if (map != nullptr && map->IsDestroyed()) {
             return;
         }
 
