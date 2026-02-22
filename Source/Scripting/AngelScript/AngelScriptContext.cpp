@@ -79,7 +79,7 @@ struct AngelScriptStackTraceData
 };
 FO_GLOBAL_DATA(AngelScriptStackTraceData, AngelScriptStackTrace);
 
-static void AngelScriptBeginCall(AngelScript::asIScriptContext* ctx, AngelScript::asIScriptFunction* func, size_t program_pos);
+static void AngelScriptBeginCall(AngelScript::asIScriptContext* ctx, AngelScript::asIScriptFunction* func);
 static void AngelScriptEndCall(AngelScript::asIScriptContext* ctx) noexcept;
 static void AngelScriptException(AngelScript::asIScriptContext* ctx, void* param);
 
@@ -117,6 +117,9 @@ void AngelScriptContextManager::CreateContext()
     FO_RUNTIME_ASSERT(ctx_impl);
     ctx_impl->BeginScriptCall = AngelScriptBeginCall;
     ctx_impl->EndScriptCall = AngelScriptEndCall;
+#else
+    ignore_unused(AngelScriptBeginCall);
+    ignore_unused(AngelScriptEndCall);
 #endif
 
     int32 as_result = 0;
@@ -363,7 +366,7 @@ void AngelScriptContextManager::ResumeSuspendedContexts(nanotime time)
     }
 }
 
-static void AngelScriptBeginCall(AngelScript::asIScriptContext* ctx, AngelScript::asIScriptFunction* func, size_t program_pos)
+static void AngelScriptBeginCall(AngelScript::asIScriptContext* ctx, AngelScript::asIScriptFunction* func)
 {
     FO_NO_STACK_TRACE_ENTRY();
 
@@ -374,11 +377,12 @@ static void AngelScriptBeginCall(AngelScript::asIScriptContext* ctx, AngelScript
     }
 
     StackTraceEntryStorage* storage = nullptr;
+    const auto func_key = std::bit_cast<size_t>(func);
 
     {
         std::scoped_lock lock {AngelScriptStackTrace->ScriptCallCacheEntriesLocker};
 
-        const auto it = AngelScriptStackTrace->ScriptCallCacheEntries.find(program_pos);
+        const auto it = AngelScriptStackTrace->ScriptCallCacheEntries.find(func_key);
 
         if (it != AngelScriptStackTrace->ScriptCallCacheEntries.end()) {
             storage = &it->second;
@@ -397,7 +401,7 @@ static void AngelScriptBeginCall(AngelScript::asIScriptContext* ctx, AngelScript
         {
             std::scoped_lock lock {AngelScriptStackTrace->ScriptCallCacheEntriesLocker};
 
-            storage = &AngelScriptStackTrace->ScriptCallCacheEntries.emplace(program_pos, StackTraceEntryStorage {}).first->second;
+            storage = &AngelScriptStackTrace->ScriptCallCacheEntries.emplace(func_key, StackTraceEntryStorage {}).first->second;
 
             const auto safe_copy = [](auto& to, size_t& len, string_view from) {
                 len = std::min(from.length(), to.size() - 1);

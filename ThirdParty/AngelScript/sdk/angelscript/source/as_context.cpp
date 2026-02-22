@@ -1194,9 +1194,7 @@ int asCContext::Execute()
 		return asCONTEXT_NOT_PREPARED;
 	}
 
-	// (FOnline Patch)
-	if (m_status != asEXECUTION_SUSPENDED && BeginScriptCall)
-		BeginScriptCall(this, m_currentFunction, (size_t)m_currentFunction);
+	bool callBeginScriptCall = m_status != asEXECUTION_SUSPENDED; // (FOnline Patch)
 
 	m_status = asEXECUTION_ACTIVE;
 
@@ -1304,6 +1302,9 @@ int asCContext::Execute()
 			asASSERT( m_status == asEXECUTION_EXCEPTION );
 		}
 	}
+
+	if (callBeginScriptCall && BeginScriptCall) // (FOnline Patch)
+		BeginScriptCall(this, m_currentFunction);
 
 	asUINT gcPreObjects = 0;
 	if( m_engine->ep.autoGarbageCollect )
@@ -1551,16 +1552,14 @@ int asCContext::GetLineNumber(asUINT stackLevel, int *column, const char **secti
 	if( stackLevel == 0 )
 	{
 		func = m_currentFunction;
-		if( func->scriptData == 0 ) return 0;
+		if( func && func->scriptData == 0 ) return 0;
 		bytePos = m_regs.programPointer;
-
-		bytePos -= 1; // (FOnline Patch)
 	}
 	else
 	{
 		asPWORD *s = m_callStack.AddressOf() + (GetCallstackSize()-stackLevel-1)*CALLSTACK_FRAME_SIZE;
 		func = (asCScriptFunction*)s[1];
-		if( func->scriptData == 0 ) return 0;
+		if( func && func->scriptData == 0 ) return 0;
 		bytePos = (asDWORD*)s[2];
 
 		// Subract 1 from the bytePos, because we want the line where
@@ -1707,10 +1706,6 @@ void asCContext::CallScriptFunction(asCScriptFunction *func)
 {
 	asASSERT( func->scriptData );
 
-	// (FOnline Patch)
-	if (BeginScriptCall)
-		BeginScriptCall(this, func, (size_t)m_regs.programPointer);
-
 	// Push the framepointer, function id and programCounter on the stack
 	PushCallState();
 
@@ -1720,6 +1715,10 @@ void asCContext::CallScriptFunction(asCScriptFunction *func)
 	m_regs.programPointer = m_currentFunction->scriptData->byteCode.AddressOf();
 
 	PrepareScriptFunction();
+
+	// (FOnline Patch)
+	if (BeginScriptCall)
+		BeginScriptCall(this, m_currentFunction);
 }
 
 void asCContext::PrepareScriptFunction()

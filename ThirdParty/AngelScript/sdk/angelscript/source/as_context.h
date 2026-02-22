@@ -55,7 +55,7 @@ class asCContext : public asIScriptContext
 {
 public:
 	// (FOnline Patch)
-	using BeginScriptCallFuncType = void(*)(asIScriptContext*, asIScriptFunction*, size_t);
+	using BeginScriptCallFuncType = void(*)(asIScriptContext*, asIScriptFunction*);
 	using EndScriptCallFuncType = void(*)(asIScriptContext*) noexcept;
 	BeginScriptCallFuncType BeginScriptCall{};
 	EndScriptCallFuncType EndScriptCall{};

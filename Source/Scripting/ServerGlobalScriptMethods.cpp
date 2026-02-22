@@ -79,6 +79,10 @@ FO_SCRIPT_API Critter* Server_Game_LoadCritter(ServerEngine* server, ident_t crI
 ///@ ExportMethod
 FO_SCRIPT_API void Server_Game_UnloadCritter(ServerEngine* server, Critter* cr)
 {
+    if (cr == nullptr) {
+        throw ScriptException("Critter arg is null");
+    }
+
     server->UnloadCritter(cr);
 }
 
