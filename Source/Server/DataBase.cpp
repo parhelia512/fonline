@@ -53,7 +53,7 @@ FO_BEGIN_NAMESPACE
 class DataBaseImpl
 {
 public:
-    explicit DataBaseImpl(ServerSettings& settings);
+    DataBaseImpl() = default;
     DataBaseImpl(const DataBaseImpl&) = delete;
     DataBaseImpl(DataBaseImpl&&) noexcept = delete;
     auto operator=(const DataBaseImpl&) = delete;
@@ -77,8 +77,6 @@ protected:
     virtual void UpdateRecord(hstring collection_name, ident_t id, const AnyData::Document& doc) = 0;
     virtual void DeleteRecord(hstring collection_name, ident_t id) = 0;
     virtual void CommitRecords() = 0;
-
-    ServerSettings& _settings;
 
 private:
     struct CommitJobData
@@ -341,11 +339,6 @@ static void BsonToDocument(const bson_t* bson, AnyData::Document& doc, char esca
     }
 }
 
-DataBaseImpl::DataBaseImpl(ServerSettings& settings) :
-    _settings {settings}
-{
-}
-
 auto DataBaseImpl::GetCommitJobsCount() const -> size_t
 {
     FO_STACK_TRACE_ENTRY();
@@ -438,15 +431,6 @@ void DataBaseImpl::CommitChanges()
         return;
     }
 
-    if (_settings.DataBaseMaxCommitJobs != 0) {
-        if (_commitThread.GetJobsCount() > numeric_cast<size_t>(_settings.DataBaseMaxCommitJobs)) {
-            WriteLog("Too many commit jobs to data base, wait for it");
-            const auto wait_time = TimeMeter();
-            _commitThread.Wait();
-            WriteLog("Wait complete in {}", wait_time.GetDuration());
-        }
-    }
-
     auto job_data = SafeAlloc::MakeShared<CommitJobData>();
     job_data->RecordChanges = std::move(_recordChanges);
     job_data->NewRecords = std::move(_newRecords);
@@ -504,15 +488,13 @@ void DataBaseImpl::WaitCommitThread() const
 class DbJson final : public DataBaseImpl
 {
 public:
-    DbJson() = delete;
     DbJson(const DbJson&) = delete;
     DbJson(DbJson&&) noexcept = delete;
     auto operator=(const DbJson&) = delete;
     auto operator=(DbJson&&) noexcept = delete;
     ~DbJson() override = default;
 
-    DbJson(ServerSettings& settings, string_view storage_dir) :
-        DataBaseImpl(settings),
+    explicit DbJson(string_view storage_dir) :
         _storageDir {storage_dir}
     {
         DiskFileSystem::MakeDirTree(storage_dir);
@@ -708,8 +690,7 @@ public:
     auto operator=(const DbUnQLite&) = delete;
     auto operator=(DbUnQLite&&) noexcept = delete;
 
-    DbUnQLite(ServerSettings& settings, string_view storage_dir) :
-        DataBaseImpl(settings)
+    explicit DbUnQLite(string_view storage_dir)
     {
         FO_STACK_TRACE_ENTRY();
 
@@ -989,14 +970,12 @@ class DbMongo final : public DataBaseImpl
 public:
     static constexpr char ESCAPE_DOT = ':';
 
-    DbMongo() = delete;
     DbMongo(const DbMongo&) = delete;
     DbMongo(DbMongo&&) noexcept = delete;
     auto operator=(const DbMongo&) = delete;
     auto operator=(DbMongo&&) noexcept = delete;
 
-    DbMongo(ServerSettings& settings, string_view uri, string_view db_name) :
-        DataBaseImpl(settings)
+    explicit DbMongo(string_view uri, string_view db_name)
     {
         FO_STACK_TRACE_ENTRY();
 
@@ -1338,11 +1317,7 @@ private:
 class DbMemory final : public DataBaseImpl
 {
 public:
-    explicit DbMemory(ServerSettings& settings) :
-        DataBaseImpl(settings)
-    {
-    }
-
+    DbMemory() = default;
     DbMemory(const DbMemory&) = delete;
     DbMemory(DbMemory&&) noexcept = delete;
     auto operator=(const DbMemory&) = delete;
@@ -1435,7 +1410,7 @@ private:
     DataBase::Collections _collections {};
 };
 
-auto ConnectToDataBase(ServerSettings& settings, string_view connection_info) -> DataBase
+auto ConnectToDataBase(string_view connection_info) -> DataBase
 {
     FO_STACK_TRACE_ENTRY();
 
@@ -1444,21 +1419,21 @@ auto ConnectToDataBase(ServerSettings& settings, string_view connection_info) ->
 
 #if FO_HAVE_JSON
         if (options.front() == "JSON" && options.size() == 2) {
-            return DataBase(SafeAlloc::MakeRaw<DbJson>(settings, options[1]));
+            return DataBase(SafeAlloc::MakeRaw<DbJson>(options[1]));
         }
 #endif
 #if FO_HAVE_UNQLITE
         if (options.front() == "DbUnQLite" && options.size() == 2) {
-            return DataBase(SafeAlloc::MakeRaw<DbUnQLite>(settings, options[1]));
+            return DataBase(SafeAlloc::MakeRaw<DbUnQLite>(options[1]));
         }
 #endif
 #if FO_HAVE_MONGO
         if (options.front() == "Mongo" && options.size() == 3) {
-            return DataBase(SafeAlloc::MakeRaw<DbMongo>(settings, options[1], options[2]));
+            return DataBase(SafeAlloc::MakeRaw<DbMongo>(options[1], options[2]));
         }
 #endif
         if (options.front() == "Memory" && options.size() == 1) {
-            return DataBase(SafeAlloc::MakeRaw<DbMemory>(settings));
+            return DataBase(SafeAlloc::MakeRaw<DbMemory>());
         }
     }
 

@@ -165,7 +165,8 @@ ServerEngine::ServerEngine(GlobalSettings& settings, FileSystem&& resources) :
     _starter.AddJob([this]() FO_DEFERRED {
         FO_STACK_TRACE_ENTRY_NAMED("InitStorageJob");
 
-        DbStorage = ConnectToDataBase(Settings, Settings.DbStorage);
+        DbStorage = ConnectToDataBase(Settings.DbStorage);
+
         if (!DbStorage) {
             throw ServerInitException("Can't init storage data base", Settings.DbStorage);
         }
@@ -549,7 +550,9 @@ ServerEngine::ServerEngine(GlobalSettings& settings, FileSystem&& resources) :
         _mainWorker.AddJob([this]() FO_DEFERRED {
             FO_STACK_TRACE_ENTRY_NAMED("StorageCommitJob");
 
-            DbStorage.CommitChanges(false);
+            if (DbStorage.GetCommitJobsCount() < numeric_cast<size_t>(Settings.DataBaseMaxCommitJobs)) {
+                DbStorage.CommitChanges(false);
+            }
 
             return std::chrono::milliseconds {Settings.DataBaseCommitPeriod};
         });
