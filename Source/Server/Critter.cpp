@@ -267,7 +267,7 @@ void Critter::MoveAttachedCritters()
             continue;
         }
 
-        _engine->VerifyTrigger(map, cr, prev_hex, new_hex, dir);
+        map->VerifyTrigger(cr, prev_hex, new_hex, dir);
 
         if (!is_cr_valid()) {
             continue;

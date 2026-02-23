@@ -1690,79 +1690,6 @@ void ServerEngine::SendCritterInitialInfo(Critter* cr, Critter* prev_cr)
     cr->Send_PlaceToGameComplete();
 }
 
-void ServerEngine::VerifyTrigger(Map* map, Critter* cr, mpos from_hex, mpos to_hex, uint8 dir)
-{
-    FO_STACK_TRACE_ENTRY();
-
-    if (map->IsTriggerStaticItemOnHex(from_hex)) {
-        for (auto& item : map->GetTriggerStaticItemsOnHex(from_hex)) {
-            if (item->TriggerScriptFunc) {
-                if (!item->TriggerScriptFunc.Call(cr, item.get(), false, dir)) {
-                    // Nop
-                }
-
-                if (cr->IsDestroyed()) {
-                    return;
-                }
-            }
-
-            OnStaticItemWalk.Fire(item.get(), cr, false, dir);
-
-            if (cr->IsDestroyed()) {
-                return;
-            }
-        }
-    }
-
-    if (map->IsTriggerStaticItemOnHex(to_hex)) {
-        for (auto& item : map->GetTriggerStaticItemsOnHex(to_hex)) {
-            if (item->TriggerScriptFunc) {
-                if (!item->TriggerScriptFunc.Call(cr, item.get(), true, dir)) {
-                    // Nop
-                }
-
-                if (cr->IsDestroyed()) {
-                    return;
-                }
-            }
-
-            OnStaticItemWalk.Fire(item.get(), cr, true, dir);
-
-            if (cr->IsDestroyed()) {
-                return;
-            }
-        }
-    }
-
-    if (map->IsTriggerItemOnHex(from_hex)) {
-        for (auto* item : map->GetTriggerItemsOnHex(from_hex)) {
-            if (item->IsDestroyed()) {
-                continue;
-            }
-
-            item->OnCritterWalk.Fire(cr, false, dir);
-
-            if (cr->IsDestroyed()) {
-                return;
-            }
-        }
-    }
-
-    if (map->IsTriggerItemOnHex(to_hex)) {
-        for (auto* item : map->GetTriggerItemsOnHex(to_hex)) {
-            if (item->IsDestroyed()) {
-                continue;
-            }
-
-            item->OnCritterWalk.Fire(cr, true, dir);
-
-            if (cr->IsDestroyed()) {
-                return;
-            }
-        }
-    }
-}
-
 void ServerEngine::Process_Handshake(ServerConnection* connection)
 {
     FO_STACK_TRACE_ENTRY();
@@ -3127,17 +3054,20 @@ void ServerEngine::ProcessCritterMovingBySteps(Critter* cr, Map* map)
 
                     FO_RUNTIME_ASSERT(!cr->IsDestroyed());
 
-                    VerifyTrigger(map, cr, old_hex, hex2, dir);
+                    map->VerifyTrigger(cr, old_hex, hex2, dir);
+
                     if (!validate_moving(hex2)) {
                         return;
                     }
 
                     MapMngr.ProcessVisibleCritters(cr);
+
                     if (!validate_moving(hex2)) {
                         return;
                     }
 
                     MapMngr.ProcessVisibleItems(cr);
+
                     if (!validate_moving(hex2)) {
                         return;
                     }

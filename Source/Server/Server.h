@@ -92,7 +92,6 @@ public:
     void DrawGui(string_view server_name);
 
     auto CreateItemOnHex(Map* map, mpos hex, hstring pid, int32 count, Properties* props) -> FO_NON_NULL Item*;
-    void VerifyTrigger(Map* map, Critter* cr, mpos from_hex, mpos to_hex, uint8 dir);
 
     auto CreateCritter(hstring pid, bool for_player) -> Critter*;
     auto LoadCritter(ident_t cr_id, bool for_player) -> Critter*;
