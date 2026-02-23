@@ -766,6 +766,7 @@ void ServerEngine::DrawGui(string_view server_name)
         else {
             if (Settings.LockMaxWaitTime != 0) {
                 const auto max_wait_time = timespan {std::chrono::milliseconds {Settings.LockMaxWaitTime}};
+
                 if (!Lock(max_wait_time)) {
                     ImGui::TextUnformatted(strex("Server hanged (no response more than {})", max_wait_time).c_str());
                     WriteLog("Server hanged (no response more than {})", max_wait_time);
@@ -779,7 +780,6 @@ void ServerEngine::DrawGui(string_view server_name)
 
             auto unlocker = scope_exit([this]() noexcept { safe_call([this] { Unlock(); }); });
 
-            // Info
             ImGui::SetNextItemOpen(true, ImGuiCond_FirstUseEver);
             if (ImGui::TreeNode("Info")) {
                 buf = GetHealthInfo();
@@ -787,24 +787,38 @@ void ServerEngine::DrawGui(string_view server_name)
                 ImGui::TreePop();
             }
 
-            // Players
             if (ImGui::TreeNode("Players")) {
-                buf = GetIngamePlayersStatistics();
-                ImGui::TextUnformatted(buf.c_str(), buf.c_str() + buf.size());
+                for (const auto& player : EntityMngr.GetPlayers() | std::views::values) {
+                    if (ImGui::TreeNode(strex("{} ({})", player->GetName(), player->GetId()).c_str())) {
+                        const auto* cr = player->GetControlledCritter();
+
+                        ImGui::LabelText("Host:", "%s", strex(" {}", player->GetConnection()->GetHost()).c_str());
+
+                        if (cr != nullptr) {
+                            ImGui::LabelText("Critter:", "%s", strex(" {}", cr->GetName()).c_str());
+                            ImGui::LabelText("Hex:", "%s", strex(" {}", cr->GetHex()).c_str());
+                        }
+
+                        ImGui::TreePop();
+                    }
+                }
+
                 ImGui::TreePop();
             }
 
-            // Locations and maps
-            if (ImGui::TreeNode("Locations and maps")) {
-                buf = GetLocationAndMapsStatistics();
-                ImGui::TextUnformatted(buf.c_str(), buf.c_str() + buf.size());
-                ImGui::TreePop();
-            }
+            if (ImGui::TreeNode("Locations")) {
+                for (const auto& loc : EntityMngr.GetLocations() | std::views::values) {
+                    if (ImGui::TreeNode(strex("{} ({})", loc->GetProtoId(), loc->GetId()).c_str())) {
+                        for (const auto& map : loc->GetMaps()) {
+                            if (ImGui::TreeNode(strex("{} ({})", map->GetProtoId(), map->GetId()).c_str())) {
+                                ImGui::TreePop();
+                            }
+                        }
 
-            // Profiler
-            if (ImGui::TreeNode("Profiler")) {
-                buf = "WIP..........................."; // GetProfilerStatistics();
-                ImGui::TextUnformatted(buf.c_str(), buf.c_str() + buf.size());
+                        ImGui::TreePop();
+                    }
+                }
+
                 ImGui::TreePop();
             }
         }
@@ -818,6 +832,8 @@ auto ServerEngine::GetHealthInfo() const -> string
     string buf;
     buf.reserve(2048);
 
+    buf += strex("Version: {}\n", Settings.GameVersion);
+    buf += strex("Compatibility version: {}\n", Settings.CompatibilityVersion);
     buf += strex("System time: {}\n", nanotime::now());
     buf += strex("Synchronized time: {}\n", GetSynchronizedTime());
     buf += strex("Server uptime: {}\n", _stats.Uptime);
@@ -834,57 +850,9 @@ auto ServerEngine::GetHealthInfo() const -> string
     buf += strex("KBytes Send: {}\n", _stats.BytesSend / 1024);
     buf += strex("KBytes Recv: {}\n", _stats.BytesRecv / 1024);
     buf += strex("Compress ratio: {}\n", numeric_cast<float64>(_stats.DataReal) / numeric_cast<float64>(_stats.DataCompressed != 0 ? _stats.DataCompressed : 1));
-    buf += strex("DB commit jobs: {}\n", DbStorage.GetCommitJobsCount());
+    buf += strex("DB commit jobs: {}/{}\n", DbStorage.GetCommitJobsCount(), Settings.DataBaseCommitPeriod);
 
     return buf;
-}
-
-auto ServerEngine::GetIngamePlayersStatistics() -> string
-{
-    FO_STACK_TRACE_ENTRY();
-
-    const auto& players = EntityMngr.GetPlayers();
-    const auto conn_count = _unloginedPlayers.size() + players.size();
-
-    string result = strex("Players: {}\nConnections: {}\n", players.size(), conn_count);
-    result += "Name                 Id         Ip              X     Y     Location and map\n";
-
-    for (const auto& player : players | std::views::values) {
-        const auto* cr = player->GetControlledCritter();
-        const auto* map = EntityMngr.GetMap(cr->GetMapId());
-        const auto* loc = map != nullptr ? map->GetLocation() : nullptr;
-
-        const string str_loc = strex("{} ({}) {} ({})", map != nullptr ? loc->GetName() : "", map != nullptr ? loc->GetId() : ident_t {}, map != nullptr ? map->GetName() : "", map != nullptr ? map->GetId() : ident_t {});
-        result += strex("{:<20} {:<10} {:<15} {:<5} {}\n", player->GetName(), player->GetId(), player->GetConnection()->GetHost(), cr->GetHex(), map != nullptr ? str_loc : "Global map");
-    }
-
-    return result;
-}
-
-auto ServerEngine::GetLocationAndMapsStatistics() -> string
-{
-    FO_STACK_TRACE_ENTRY();
-
-    const auto& locations = EntityMngr.GetLocations();
-    const auto& maps = EntityMngr.GetMaps();
-
-    string result = strex("Locations count: {}\n", locations.size());
-    result += strex("Maps count: {}\n", maps.size());
-    result += "Location             Id\n";
-    result += "          Map                 Id          Time Script\n";
-
-    for (const auto& loc : locations | std::views::values) {
-        result += strex("{:<20} {:<10}\n", loc->GetName(), loc->GetId());
-
-        int32 map_index = 0;
-
-        for (const auto& map : loc->GetMaps()) {
-            result += strex("     {:02}) {:<20} {:<9}   {:<4} {}\n", map_index, map->GetName(), map->GetId(), map->GetFixedDayTime(), map->GetInitScript());
-            map_index++;
-        }
-    }
-
-    return result;
 }
 
 void ServerEngine::OnNewConnection(shared_ptr<NetworkServerConnection> net_connection)
@@ -1130,34 +1098,9 @@ void ServerEngine::Process_Command(NetInBuffer& buf, const LogFunc& logcb, Playe
         logcb(istr);
     } break;
     case CMD_GAMEINFO: {
-        const auto info = buf.Read<int32>();
-
-        string result;
-        switch (info) {
-        case 1:
-            result = GetIngamePlayersStatistics();
-            break;
-        case 2:
-            result = GetLocationAndMapsStatistics();
-            break;
-        case 3:
-            // result = GetDeferredCallsStatistics();
-            break;
-        case 4:
-            result = "WIP";
-            break;
-        default:
-            break;
-        }
-
         string str = strex("Unlogined players: {}, Logined players: {}, Critters: {}, Frame time: {}, Server uptime: {}", //
             _unloginedPlayers.size(), EntityMngr.GetPlayersCount(), EntityMngr.GetCrittersCount(), GameTime.GetFrameTime(), GameTime.GetFrameTime() - _stats.ServerStartTime);
-
-        result += str;
-
-        for (string_view line : strvex(result).split('\n')) {
-            logcb(line);
-        }
+        logcb(str);
     } break;
     case CMD_CRITID: {
         const auto name = buf.Read<string>();
