@@ -1143,7 +1143,7 @@ void RegisterAngelScriptTypes(AngelScript::asIScriptEngine* as_engine)
         FO_AS_VERIFY(as_engine->RegisterObjectMethod("TextPackName", "hstring opImplCast() const", FO_SCRIPT_FUNC_THIS(HstringWrapper_HstringCast<TextPackName>), FO_SCRIPT_FUNC_THIS_CONV));
         FO_AS_VERIFY(as_engine->RegisterObjectMethod("TextPackName", "hstring opImplConv() const", FO_SCRIPT_FUNC_THIS(HstringWrapper_HstringCast<TextPackName>), FO_SCRIPT_FUNC_THIS_CONV));
         FO_AS_VERIFY(as_engine->RegisterObjectMethod("TextPackName", "any opImplConv() const", FO_SCRIPT_FUNC_THIS(HstringWrapper_AnyConv<TextPackName>), FO_SCRIPT_FUNC_THIS_CONV));
-        FO_AS_VERIFY(as_engine->RegisterObjectMethod("any", "TextPackName opImplConv() const", FO_SCRIPT_GENERIC(HstringWrapper_AnyConvRev<TextPackName>), FO_SCRIPT_GENERIC_CONV));
+        FO_AS_VERIFY(as_engine->RegisterObjectMethod("any", "TextPackName opImplConv() const", FO_SCRIPT_GENERIC(HstringWrapper_AnyConvRev<TextPackName>), FO_SCRIPT_GENERIC_CONV, cast_to_void(&type)));
     }
 
     // LanguageName
@@ -1158,7 +1158,7 @@ void RegisterAngelScriptTypes(AngelScript::asIScriptEngine* as_engine)
         FO_AS_VERIFY(as_engine->RegisterObjectMethod("LanguageName", "hstring opImplCast() const", FO_SCRIPT_FUNC_THIS(HstringWrapper_HstringCast<LanguageName>), FO_SCRIPT_FUNC_THIS_CONV));
         FO_AS_VERIFY(as_engine->RegisterObjectMethod("LanguageName", "hstring opImplConv() const", FO_SCRIPT_FUNC_THIS(HstringWrapper_HstringCast<LanguageName>), FO_SCRIPT_FUNC_THIS_CONV));
         FO_AS_VERIFY(as_engine->RegisterObjectMethod("LanguageName", "any opImplConv() const", FO_SCRIPT_FUNC_THIS(HstringWrapper_AnyConv<LanguageName>), FO_SCRIPT_FUNC_THIS_CONV));
-        FO_AS_VERIFY(as_engine->RegisterObjectMethod("any", "LanguageName opImplConv() const", FO_SCRIPT_GENERIC(HstringWrapper_AnyConvRev<LanguageName>), FO_SCRIPT_GENERIC_CONV));
+        FO_AS_VERIFY(as_engine->RegisterObjectMethod("any", "LanguageName opImplConv() const", FO_SCRIPT_GENERIC(HstringWrapper_AnyConvRev<LanguageName>), FO_SCRIPT_GENERIC_CONV, cast_to_void(&type)));
     }
 
     // TextPackKey
@@ -1172,7 +1172,7 @@ void RegisterAngelScriptTypes(AngelScript::asIScriptEngine* as_engine)
         FO_AS_VERIFY(as_engine->RegisterObjectBehaviour("TextPackKey", AngelScript::asBEHAVE_CONSTRUCT, "void f(const TextPackName &in collection, const hstring &in key1, const string &in key2)", FO_SCRIPT_GENERIC(TextPackKey_ConstructH2), FO_SCRIPT_GENERIC_CONV));
         FO_AS_VERIFY(as_engine->RegisterObjectBehaviour("TextPackKey", AngelScript::asBEHAVE_CONSTRUCT, "void f(const TextPackName &in collection, const string &in key1, const string &in key2, const string &in key3)", FO_SCRIPT_GENERIC(TextPackKey_Construct3), FO_SCRIPT_GENERIC_CONV));
         FO_AS_VERIFY(as_engine->RegisterObjectBehaviour("TextPackKey", AngelScript::asBEHAVE_CONSTRUCT, "void f(const TextPackName &in collection, const hstring &in key1, const string &in key2, const string &in key3)", FO_SCRIPT_GENERIC(TextPackKey_ConstructH3), FO_SCRIPT_GENERIC_CONV));
-        FO_AS_VERIFY(as_engine->RegisterObjectMethod("TextPackKey", "int opCmp(const TextPackKey&in other) const", FO_SCRIPT_GENERIC(Type_Cmp<TextPackKey>), FO_SCRIPT_GENERIC_CONV, cast_to_void(&type)));
+        FO_AS_VERIFY(as_engine->RegisterObjectMethod("TextPackKey", "int opCmp(const TextPackKey&in other) const", FO_SCRIPT_FUNC_THIS(Type_Cmp<TextPackKey>), FO_SCRIPT_FUNC_THIS_CONV));
         FO_AS_VERIFY(as_engine->RegisterObjectMethod("TextPackKey", "string get_str() const", FO_SCRIPT_GENERIC(GenericType_GetStr), FO_SCRIPT_GENERIC_CONV, cast_to_void(&type)));
         FO_AS_VERIFY(as_engine->RegisterObjectMethod("TextPackKey", "any opImplConv() const", FO_SCRIPT_GENERIC(GenericType_AnyConv), FO_SCRIPT_GENERIC_CONV, cast_to_void(&type)));
         FO_AS_VERIFY(as_engine->RegisterObjectMethod("any", "TextPackKey opImplConv() const", FO_SCRIPT_GENERIC(GenericType_AnyConvRev), FO_SCRIPT_GENERIC_CONV, cast_to_void(&type)));
