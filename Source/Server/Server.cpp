@@ -272,8 +272,8 @@ ServerEngine::ServerEngine(GlobalSettings& settings, FileSystem&& resources) :
 
         WriteLog("Load language data");
 
-        _defaultLang = LanguagePack {Settings.Language, *this};
-        _defaultLang.LoadFromResources(Resources);
+        _defaultLang = TextPack {Hashes};
+        _defaultLang.LoadFromResources(Resources, Settings.Language);
 
         return std::nullopt;
     });
@@ -314,7 +314,7 @@ ServerEngine::ServerEngine(GlobalSettings& settings, FileSystem&& resources) :
                 writer.Write<int16>(numeric_cast<int16>(file.GetPath().length()));
                 writer.WritePtr(file.GetPath().data(), file.GetPath().length());
                 writer.Write<uint32>(numeric_cast<uint32>(data.size()));
-                writer.Write<uint32>(Hashing::MurmurHash2(data.data(), data.size()));
+                writer.Write<uint32>(numeric_cast<uint32>(hashing_ex::hash(data.data(), data.size())));
             };
 
             for (const auto& resource_entry : Settings.ClientResourceEntries) {
@@ -1280,34 +1280,18 @@ void ServerEngine::Process_Command(NetInBuffer& buf, const LogFunc& logcb, Playe
             break;
         }
 
-        const auto func_name_ = Hashes.ToHashedString(func_name);
-
-        bool failed = false;
-        const auto param0 = ResolveGenericValue(param0_str, &failed);
-        const auto param1 = ResolveGenericValue(param1_str, &failed);
-        const auto param2 = ResolveGenericValue(param2_str, &failed);
-
-        if (CallAdminFunc<void, Player*>(func_name_, player) || //
-            CallAdminFunc<void, Player*, int32>(func_name_, player, param0) || //
-            CallAdminFunc<void, Player*, any_t>(func_name_, player, param0_str) || //
-            CallAdminFunc<void, Player*, int32, int32>(func_name_, player, param0, param1) || //
-            CallAdminFunc<void, Player*, any_t, any_t>(func_name_, player, param0_str, param1_str) || //
-            CallAdminFunc<void, Player*, int32, int32, int32>(func_name_, player, param0, param1, param2) || //
-            CallAdminFunc<void, Player*, any_t, any_t, any_t>(func_name_, player, param0_str, param1_str, param2_str) || //
-            CallAdminFunc<void, Critter*>(func_name_, player_cr) || //
-            CallAdminFunc<void, Critter*, int32>(func_name_, player_cr, param0) || //
-            CallAdminFunc<void, Critter*, any_t>(func_name_, player_cr, param0_str) || //
-            CallAdminFunc<void, Critter*, int32, int32>(func_name_, player_cr, param0, param1) || //
-            CallAdminFunc<void, Critter*, any_t, any_t>(func_name_, player_cr, param0_str, param1_str) || //
-            CallAdminFunc<void, Critter*, int32, int32, int32>(func_name_, player_cr, param0, param1, param2) || //
-            CallAdminFunc<void, Critter*, any_t, any_t, any_t>(func_name_, player_cr, param0_str, param1_str, param2_str) || //
-            CallAdminFunc<void>(func_name_) || //
-            CallAdminFunc<void, int32>(func_name_, param0) || //
-            CallAdminFunc<void, any_t>(func_name_, param0_str) || //
-            CallAdminFunc<void, int32, int32>(func_name_, param0, param1) || //
-            CallAdminFunc<void, any_t, any_t>(func_name_, param0_str, param1_str) || //
-            CallAdminFunc<void, int32, int32, int32>(func_name_, param0, param1, param2) || //
-            CallAdminFunc<void, any_t, any_t, any_t>(func_name_, param0_str, param1_str, param2_str)) {
+        if (CallFunc<void, Player*>(Hashes.ToHashedString(func_name), player) || //
+            CallFunc<void, Player*, any_t>(Hashes.ToHashedString(func_name), player, param0_str) || //
+            CallFunc<void, Player*, any_t, any_t>(Hashes.ToHashedString(func_name), player, param0_str, param1_str) || //
+            CallFunc<void, Player*, any_t, any_t, any_t>(Hashes.ToHashedString(func_name), player, param0_str, param1_str, param2_str) || //
+            CallFunc<void, Critter*>(Hashes.ToHashedString(func_name), player_cr) || //
+            CallFunc<void, Critter*, any_t>(Hashes.ToHashedString(func_name), player_cr, param0_str) || //
+            CallFunc<void, Critter*, any_t, any_t>(Hashes.ToHashedString(func_name), player_cr, param0_str, param1_str) || //
+            CallFunc<void, Critter*, any_t, any_t, any_t>(Hashes.ToHashedString(func_name), player_cr, param0_str, param1_str, param2_str) || //
+            CallFunc<void>(Hashes.ToHashedString(func_name)) || //
+            CallFunc<void, any_t>(Hashes.ToHashedString(func_name), param0_str) || //
+            CallFunc<void, any_t, any_t>(Hashes.ToHashedString(func_name), param0_str, param1_str) || //
+            CallFunc<void, any_t, any_t, any_t>(Hashes.ToHashedString(func_name), param0_str, param1_str, param2_str)) {
             logcb("Run script success");
         }
         else {
@@ -2858,7 +2842,7 @@ auto ServerEngine::MakePlayerId(string_view player_name) const -> ident_t
     FO_STACK_TRACE_ENTRY();
 
     FO_RUNTIME_ASSERT(!player_name.empty());
-    const auto hash_value = Hashing::MurmurHash2(reinterpret_cast<const uint8*>(player_name.data()), numeric_cast<uint32>(player_name.length()));
+    const auto hash_value = static_cast<uint32>(hashing_ex::hash(reinterpret_cast<const uint8*>(player_name.data()), player_name.length()));
     FO_RUNTIME_ASSERT(hash_value);
     return ident_t {(1u << 31u) | hash_value};
 }
