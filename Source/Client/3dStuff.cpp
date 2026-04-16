@@ -1057,15 +1057,20 @@ void ModelInstance::RefreshMoveAnimation()
     float32 speed = 1.0f;
     const auto anim_index = _modelInfo->GetAnimationIndex(state_anim, action_anim, &speed);
 
+    if (_isMoving) {
+        speed *= _movingSpeedFactor;
+    }
+
     if (anim_index == _curMovingAnimIndex) {
+        if (_isMoving && !is_float_equal(_moveAnimController->GetTrackSpeed(_curMoveTrack), speed)) {
+            _moveAnimController->SetTrackSpeed(_curMoveTrack, speed);
+            _forceDraw = true;
+        }
+
         return;
     }
 
     _curMovingAnimIndex = anim_index;
-
-    if (_isMoving) {
-        speed *= _movingSpeedFactor;
-    }
 
     constexpr float32 smooth_time = 0.001f;
 
@@ -1337,21 +1342,19 @@ void ModelInstance::SetAnimData(ModelAnimationData& data, bool clear)
     }
 }
 
-void ModelInstance::SetDir(uint8 dir, bool smooth_rotation)
+void ModelInstance::SetDir(mdir dir, bool smooth_rotation)
 {
     FO_STACK_TRACE_ENTRY();
 
-    const auto dir_angle = GeometryHelper::DirToAngle(dir);
-
-    SetMoveDirAngle(dir_angle, smooth_rotation);
-    SetLookDirAngle(dir_angle);
+    SetMoveDir(dir, smooth_rotation);
+    SetLookDir(dir);
 }
 
-void ModelInstance::SetLookDirAngle(int32 dir_angle)
+void ModelInstance::SetLookDir(mdir dir)
 {
     FO_STACK_TRACE_ENTRY();
 
-    const auto new_angle = numeric_cast<float32>(180 - dir_angle);
+    const auto new_angle = numeric_cast<float32>(180 - dir.angle());
 
     if (!_noRotate) {
         if (!is_float_equal(new_angle, _lookDirAngle)) {
@@ -1364,11 +1367,11 @@ void ModelInstance::SetLookDirAngle(int32 dir_angle)
     }
 }
 
-void ModelInstance::SetMoveDirAngle(int32 dir_angle, bool smooth_rotation)
+void ModelInstance::SetMoveDir(mdir dir, bool smooth_rotation)
 {
     FO_STACK_TRACE_ENTRY();
 
-    const auto new_angle = numeric_cast<float32>(180 - dir_angle);
+    const auto new_angle = numeric_cast<float32>(180 - dir.angle());
 
     if (!is_float_equal(new_angle, _targetMoveDirAngle) || (!smooth_rotation && !is_float_equal(new_angle, _moveDirAngle))) {
         _targetMoveDirAngle = new_angle;
@@ -1382,7 +1385,7 @@ void ModelInstance::SetMoveDirAngle(int32 dir_angle, bool smooth_rotation)
     }
 
     if (!_modelInfo->_rotationBone) {
-        SetLookDirAngle(dir_angle);
+        SetLookDir(dir);
     }
 }
 
