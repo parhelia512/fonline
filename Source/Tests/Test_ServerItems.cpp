@@ -54,7 +54,7 @@ namespace
         return settings;
     }
 
-    static auto MakeScriptBinary(const FileSystem& metadata_resources) -> vector<uint8>
+    static auto MakeScriptBinary(const FileSystem& metadata_resources) -> vector<uint8_t>
     {
         BakerServerEngine compiler_engine {metadata_resources};
 
@@ -160,7 +160,7 @@ namespace ServerItemsTest
     {
         FO_RUNTIME_ASSERT(server);
 
-        for (int32 i = 0; i < 6000; i++) {
+        for (int32_t i = 0; i < 6000; i++) {
             if (server->IsStarted()) {
                 return {};
             }
@@ -172,6 +172,21 @@ namespace ServerItemsTest
         }
 
         return "ServerEngine startup timed out";
+    }
+
+    static auto CreateLoggedPlayer(ServerEngine* server, string_view name) -> Player*
+    {
+        FO_RUNTIME_ASSERT(server);
+
+        auto* unlogined_player = server->CreateUnloginedPlayer(NetworkServer::CreateDummyConnection(server->Settings));
+
+        if (unlogined_player == nullptr) {
+            return nullptr;
+        }
+
+        unlogined_player->SetName(name);
+        unlogined_player->SetLastControlledCritterId(ident_t {1});
+        return server->LoginPlayerToNewRecord(unlogined_player);
     }
 }
 
@@ -219,7 +234,7 @@ TEST_CASE("ServerItemCreationAndDestruction")
     REQUIRE(server->CallFunc(fn("ServerItemsTest::GetItemInitCalls"), init_calls));
     CHECK(init_calls >= 1);
 
-    int64 last_item_id = 0;
+    int64_t last_item_id = 0;
     REQUIRE(server->CallFunc(fn("ServerItemsTest::GetLastItemId"), last_item_id));
     CHECK(last_item_id == item_id.underlying_value());
 
@@ -290,7 +305,7 @@ TEST_CASE("ServerItemAddedToCritterInventory")
     CHECK(inv_items2.size() >= 2);
 
     // Check via script
-    auto cr_item_count_func = server->FindFunc<int64, Critter*>(fn("ServerItemsTest::GetCritterItemCount"));
+    auto cr_item_count_func = server->FindFunc<int64_t, Critter*>(fn("ServerItemsTest::GetCritterItemCount"));
     REQUIRE(cr_item_count_func);
     REQUIRE(cr_item_count_func.Call(cr));
     CHECK(cr_item_count_func.GetResult() >= 2);
@@ -369,12 +384,14 @@ TEST_CASE("ServerCritterLifecycleOperations")
     REQUIRE(is_alive_func.Call(cr1));
     CHECK(is_alive_func.GetResult() == true);
 
-    // MakePlayerId idempotent
-    const auto pid1 = server->MakePlayerId("TestPlayer1");
-    const auto pid2 = server->MakePlayerId("TestPlayer1");
-    const auto pid3 = server->MakePlayerId("TestPlayer2");
-    CHECK(pid1 == pid2);
-    CHECK(pid1 != pid3);
+    // Player login allocates persistent ids through the entity manager
+    auto* player1 = CreateLoggedPlayer(server.get(), "TestPlayer1");
+    auto* player2 = CreateLoggedPlayer(server.get(), "TestPlayer2");
+    REQUIRE(player1 != nullptr);
+    REQUIRE(player2 != nullptr);
+    CHECK(player1->GetId() != ident_t {});
+    CHECK(player2->GetId() != ident_t {});
+    CHECK(player1->GetId() != player2->GetId());
 
     // Unload player critter
     const auto cr3_id = cr3->GetId();

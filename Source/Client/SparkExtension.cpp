@@ -92,7 +92,7 @@ namespace SPK::FO
         v.Color = ucolor {color.r, color.g, color.b, color.a};
     }
 
-    void SparkRenderBuffer::SetNextTexCoord(float32 tu, float32 tv)
+    void SparkRenderBuffer::SetNextTexCoord(float32_t tu, float32_t tv)
     {
         FO_STACK_TRACE_ENTRY();
 
@@ -255,7 +255,7 @@ namespace SPK::FO
 
         ignore_unused(dataSet);
 
-        const float32 diagonal = group.getGraphicalRadius() * std::sqrt(scaleX * scaleX + scaleY * scaleY);
+        const float32_t diagonal = group.getGraphicalRadius() * std::sqrt(scaleX * scaleX + scaleY * scaleY);
         const Vector3D diag_v(diagonal, diagonal, diagonal);
 
         if (group.isEnabled(PARAM_SCALE)) {
@@ -311,21 +311,21 @@ namespace SPK::FO
         AddTexture2DAtlas(particle, render_buffer);
     }
 
-    auto SparkQuadRenderer::GetDrawWidth() const -> int32
+    auto SparkQuadRenderer::GetDrawWidth() const -> int32_t
     {
         FO_STACK_TRACE_ENTRY();
 
         return _drawWidth;
     }
 
-    auto SparkQuadRenderer::GetDrawHeight() const -> int32
+    auto SparkQuadRenderer::GetDrawHeight() const -> int32_t
     {
         FO_STACK_TRACE_ENTRY();
 
         return _drawHeight;
     }
 
-    void SparkQuadRenderer::SetDrawSize(int32 width, int32 height)
+    void SparkQuadRenderer::SetDrawSize(int32_t width, int32_t height)
     {
         FO_STACK_TRACE_ENTRY();
 
@@ -404,7 +404,7 @@ namespace SPK::FO
         upVector.set(0.0f, 1.0f, 0.0f);
 
         if (const auto* attrib = descriptor.getAttributeWithValue("draw size"); attrib != nullptr) {
-            const auto tmpSize = attrib->getValues<int32>();
+            const auto tmpSize = attrib->getValues<int32_t>();
 
             switch (tmpSize.size()) {
             case 1:
@@ -428,7 +428,7 @@ namespace SPK::FO
         }
 
         if (const auto* attrib = descriptor.getAttributeWithValue("scale"); attrib != nullptr) {
-            const auto tmpScale = attrib->getValues<float32>();
+            const auto tmpScale = attrib->getValues<float32_t>();
 
             switch (tmpScale.size()) {
             case 1:

@@ -50,11 +50,12 @@ namespace
         settings.ApplyAutoSettings();
 
         BakerTests::ApplySelfContainedServerSettings(settings);
+        BakerTests::OverrideSetting(settings.CustomCollections, vector<string> {"test_collection:Int"});
 
         return settings;
     }
 
-    static auto MakeScriptBinary(const FileSystem& metadata_resources) -> vector<uint8>
+    static auto MakeScriptBinary(const FileSystem& metadata_resources) -> vector<uint8_t>
     {
         BakerServerEngine compiler_engine {metadata_resources};
 
@@ -229,7 +230,7 @@ namespace EntityOps
     int TestDatabaseGetAllRecordIds()
     {
         // Get all record ids from a collection (may be empty)
-        array<ident> ids = Game.DbGetAllRecordIds("test_records".hstr());
+        array<ident> ids = Game.DbGetAllRecordIds("test_collection".hstr());
         // Just verify no crash, collection likely empty
 
         return 0;
@@ -813,7 +814,7 @@ namespace EntityOps
     {
         FO_RUNTIME_ASSERT(server);
 
-        for (int32 i = 0; i < 6000; i++) {
+        for (int32_t i = 0; i < 6000; i++) {
             if (server->IsStarted()) {
                 return {};
             }
@@ -846,7 +847,7 @@ namespace EntityOps
     const auto get_func = [&server](string_view name) { return server->Hashes.ToHashedString(name); }
 
 #define RUN_SCRIPT_FUNC(func_name) \
-    auto func = server->FindFunc<int32>(get_func("EntityOps::" func_name)); \
+    auto func = server->FindFunc<int32_t>(get_func("EntityOps::" func_name)); \
     REQUIRE(func); \
     REQUIRE(func.Call()); \
     CHECK(func.GetResult() == 0)

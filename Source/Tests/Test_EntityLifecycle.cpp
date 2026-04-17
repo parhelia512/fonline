@@ -54,7 +54,7 @@ namespace
         return settings;
     }
 
-    static auto MakeScriptBinary(const FileSystem& metadata_resources) -> vector<uint8>
+    static auto MakeScriptBinary(const FileSystem& metadata_resources) -> vector<uint8_t>
     {
         BakerServerEngine compiler_engine {metadata_resources};
 
@@ -157,7 +157,7 @@ namespace EntityLifecycle
     {
         FO_RUNTIME_ASSERT(server);
 
-        for (int32 i = 0; i < 6000; i++) {
+        for (int32_t i = 0; i < 6000; i++) {
             if (server->IsStarted()) {
                 return {};
             }
@@ -169,6 +169,21 @@ namespace EntityLifecycle
         }
 
         return "ServerEngine startup timed out";
+    }
+
+    static auto CreateLoggedPlayer(ServerEngine* server, string_view name) -> Player*
+    {
+        FO_RUNTIME_ASSERT(server);
+
+        auto* unlogined_player = server->CreateUnloginedPlayer(NetworkServer::CreateDummyConnection(server->Settings));
+
+        if (unlogined_player == nullptr) {
+            return nullptr;
+        }
+
+        unlogined_player->SetName(name);
+        unlogined_player->SetLastControlledCritterId(ident_t {1});
+        return server->LoginPlayerToNewRecord(unlogined_player);
     }
 }
 
@@ -206,7 +221,7 @@ TEST_CASE("EntityInitEvents")
         REQUIRE(cr != nullptr);
 
         // Check critter init event fired
-        int32 calls = 0;
+        int32_t calls = 0;
         REQUIRE(server->CallFunc(fn("EntityLifecycle::GetCritterInitCalls"), calls));
         CHECK(calls >= 1);
 
@@ -222,7 +237,7 @@ TEST_CASE("EntityInitEvents")
         auto* item = server->ItemMngr.CreateItem(fn("TestItem"), 1, nullptr);
         REQUIRE(item != nullptr);
 
-        int32 calls = 0;
+        int32_t calls = 0;
         REQUIRE(server->CallFunc(fn("EntityLifecycle::GetItemInitCalls"), calls));
         CHECK(calls >= 1);
 
@@ -238,7 +253,7 @@ TEST_CASE("EntityInitEvents")
         auto* loc = server->MapMngr.CreateLocation(fn("TestLocation"));
         REQUIRE(loc != nullptr);
 
-        int32 calls = 0;
+        int32_t calls = 0;
         REQUIRE(server->CallFunc(fn("EntityLifecycle::GetLocationInitCalls"), calls));
         CHECK(calls >= 1);
 
@@ -687,9 +702,9 @@ TEST_CASE("ServerHealthInfo")
     }
 }
 
-// ========== Player ID C++ API Tests ==========
+// ========== Player Registration C++ API Tests ==========
 
-TEST_CASE("PlayerIdCppApi")
+TEST_CASE("PlayerRegistrationCppApi")
 {
     auto settings = MakeSettings();
     auto server = SafeAlloc::MakeRefCounted<ServerEngine>(settings, MakeResources());
@@ -707,24 +722,27 @@ TEST_CASE("PlayerIdCppApi")
     REQUIRE(server->Lock(timespan {std::chrono::seconds {10}}));
     auto unlock = scope_exit([&server]() noexcept { safe_call([&server] { server->Unlock(); }); });
 
-    SECTION("MakePlayerIdDeterministic")
+    SECTION("LoginPlayerToNewRecordAllocatesNonZeroId")
     {
-        const auto id1 = server->MakePlayerId("TestPlayer1");
-        const auto id2 = server->MakePlayerId("TestPlayer1");
-        CHECK(id1 == id2);
+        auto* player = CreateLoggedPlayer(server.get(), "TestPlayer1");
+        REQUIRE(player != nullptr);
+        CHECK(player->GetId() != ident_t {});
     }
 
-    SECTION("MakePlayerIdDifferentForDifferentNames")
+    SECTION("LoginPlayerToNewRecordRegistersPlayer")
     {
-        const auto id1 = server->MakePlayerId("Player1");
-        const auto id2 = server->MakePlayerId("Player2");
-        CHECK(id1 != id2);
+        auto* player = CreateLoggedPlayer(server.get(), "Player1");
+        REQUIRE(player != nullptr);
+        CHECK(server->EntityMngr.GetPlayer(player->GetId()) == player);
     }
 
-    SECTION("MakePlayerIdNonZero")
+    SECTION("LoginPlayerToNewRecordProducesUniqueIds")
     {
-        const auto id = server->MakePlayerId("SomePlayer");
-        CHECK(id != ident_t {});
+        auto* player1 = CreateLoggedPlayer(server.get(), "Player1");
+        auto* player2 = CreateLoggedPlayer(server.get(), "Player2");
+        REQUIRE(player1 != nullptr);
+        REQUIRE(player2 != nullptr);
+        CHECK(player1->GetId() != player2->GetId());
     }
 }
 
@@ -877,20 +895,20 @@ TEST_CASE("ScriptFunctionCalls")
 
     SECTION("CallFuncWithReturnValue")
     {
-        int32 result = 0;
+        int32_t result = 0;
         REQUIRE(server->CallFunc(fn("EntityLifecycle::GetItemInitCalls"), result));
         // Result is valid (we just check the API works)
     }
 
     SECTION("FindFuncReturnsFalseForMissing")
     {
-        auto func = server->FindFunc<int32>(fn("NonExistent::Function"));
+        auto func = server->FindFunc<int32_t>(fn("NonExistent::Function"));
         CHECK_FALSE(func);
     }
 
     SECTION("FindFuncWorksForExisting")
     {
-        auto func = server->FindFunc<int32>(fn("EntityLifecycle::GetItemInitCalls"));
+        auto func = server->FindFunc<int32_t>(fn("EntityLifecycle::GetItemInitCalls"));
         CHECK(func);
         if (func) {
             REQUIRE(func.Call());

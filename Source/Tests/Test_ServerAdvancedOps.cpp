@@ -50,11 +50,12 @@ namespace
         settings.ApplyAutoSettings();
 
         BakerTests::ApplySelfContainedServerSettings(settings);
+        BakerTests::OverrideSetting(settings.CustomCollections, vector<string> {"test_collection:Int"});
 
         return settings;
     }
 
-    static auto MakeScriptBinary(const FileSystem& metadata_resources) -> vector<uint8>
+    static auto MakeScriptBinary(const FileSystem& metadata_resources) -> vector<uint8_t>
     {
         BakerServerEngine compiler_engine {metadata_resources};
 
@@ -444,9 +445,12 @@ namespace AdvOps
 
     int TestPlayerLookup()
     {
-        // GetPlayer returns null for non-logged-in players
-        Player@ p = Game.GetPlayer("NonexistentPlayer");
-        if (p !is null) return -1;
+        Critter@ cr = Game.CreateCritter("TestCritter".hstr(), false);
+        if (cr is null) return -1;
+
+        if (cr.GetPlayer() !is null) return -2;
+
+        Game.DestroyCritter(cr);
 
         return 0;
     }
@@ -900,7 +904,7 @@ namespace AdvOps
 
     int TestDatabaseHasRecordAdv()
     {
-        hstring table = "TestTable".hstr();
+        hstring table = "test_collection".hstr();
         ident fakeId;
         fakeId.value = 999999;
 
@@ -913,9 +917,9 @@ namespace AdvOps
 
     int TestDatabaseGetAllRecordIds()
     {
-        hstring table = "TestTable".hstr();
+        hstring table = "test_collection".hstr();
 
-        // Get all records from non-existent table
+        // Get all records from an empty custom collection
         array<ident> ids = Game.DbGetAllRecordIds(table);
         // Should return empty array
         if (ids.length() != 0) return -1;
@@ -1050,7 +1054,7 @@ namespace AdvOps
     {
         FO_RUNTIME_ASSERT(server);
 
-        for (int32 i = 0; i < 6000; i++) {
+        for (int32_t i = 0; i < 6000; i++) {
             if (server->IsStarted()) {
                 return {};
             }
@@ -1083,7 +1087,7 @@ namespace AdvOps
     const auto get_func = [&server](string_view name) { return server->Hashes.ToHashedString(name); }
 
 #define RUN_SCRIPT_FUNC(func_name) \
-    auto func = server->FindFunc<int32>(get_func("AdvOps::" func_name)); \
+    auto func = server->FindFunc<int32_t>(get_func("AdvOps::" func_name)); \
     REQUIRE(func); \
     REQUIRE(func.Call()); \
     CHECK(func.GetResult() == 0)

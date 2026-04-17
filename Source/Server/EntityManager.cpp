@@ -200,10 +200,10 @@ void EntityManager::LoadEntities()
 
     LoadInnerEntities(_engine.get(), is_error);
 
-    const auto loc_ids = _engine->DbStorage.GetAllIds(_locationCollectionName);
+    const auto loc_ids = _engine->DbStorage.GetAllIntIds(_locationCollectionName);
 
     for (const auto loc_id : loc_ids) {
-        LoadLocation(ident_t {loc_id}, is_error);
+        LoadLocation(loc_id, is_error);
     }
 
     // Todo: load global map critters
@@ -288,7 +288,7 @@ auto EntityManager::LoadLocation(ident_t loc_id, bool& is_error) noexcept -> Loc
                 const auto loc_map_index = map->GetLocMapIndex();
                 auto loc_maps = loc->GetRawMaps();
 
-                if (loc_map_index >= numeric_cast<int32>(loc_maps.size())) {
+                if (loc_map_index >= numeric_cast<int32_t>(loc_maps.size())) {
                     loc_maps.resize(loc_map_index + 1);
                 }
 
@@ -842,8 +842,10 @@ void EntityManager::RegisterPlayer(Player* player, ident_t id)
 {
     FO_STACK_TRACE_ENTRY();
 
-    FO_RUNTIME_ASSERT(id);
-    player->SetId(id);
+    if (id) {
+        player->SetId(id);
+    }
+
     RegisterEntity(player);
     player->SetPersistent(true);
     const auto [it, inserted] = _allPlayers.emplace(player->GetId(), player);

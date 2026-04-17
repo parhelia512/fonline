@@ -84,7 +84,7 @@ FO_BEGIN_NAMESPACE
 class BaseEngine;
 class AngelScriptBackend;
 
-[[noreturn]] void ThrowScriptCoreException(string_view file, int32 line, int32 result);
+[[noreturn]] void ThrowScriptCoreException(string_view file, int32_t line, int32_t result);
 auto GetScriptBackend(BaseEngine* engine) -> AngelScriptBackend*;
 auto GetScriptBackend(AngelScript::asIScriptEngine* as_engine) -> AngelScriptBackend*;
 auto GetEngineMetadata(AngelScript::asIScriptEngine* as_engine) -> const EngineMetadata*;
@@ -104,7 +104,7 @@ auto CalcConstructAddrSpace(const Property* prop) -> size_t;
 void FreeConstructAddrSpace(const Property* prop, void* construct_addr);
 void ConvertPropsToScriptObject(const Property* prop, PropertyRawData& prop_data, void* construct_addr, AngelScript::asIScriptEngine* as_engine);
 auto ConvertScriptToPropsObject(const Property* prop, void* as_obj) -> PropertyRawData;
-auto GetScriptObjectInfo(const void* ptr, int32 type_id) -> string;
+auto GetScriptObjectInfo(const void* ptr, int32_t type_id) -> string;
 auto GetScriptFuncName(const AngelScript::asIScriptFunction* func, HashResolver& hash_resolver) -> hstring;
 
 #ifdef AS_MAX_PORTABILITY
@@ -170,13 +170,13 @@ namespace aswrap
     static void StoreReturnValue(AngelScript::asIScriptGeneric* gen, T value)
     {
         if constexpr (std::is_lvalue_reference_v<T>) {
-            int32 as_result = gen->SetReturnAddress(const_cast<void*>(static_cast<const void*>(std::addressof(value))));
+            const auto as_result = gen->SetReturnAddress(const_cast<void*>(static_cast<const void*>(std::addressof(value))));
             if (as_result < 0) {
                 ThrowScriptCoreException(__FILE__, __LINE__, as_result);
             }
         }
         else if constexpr (std::is_pointer_v<T>) {
-            int32 as_result = gen->SetReturnAddress(const_cast<void*>(reinterpret_cast<const void*>(value)));
+            const auto as_result = gen->SetReturnAddress(const_cast<void*>(reinterpret_cast<const void*>(value)));
             if (as_result < 0) {
                 ThrowScriptCoreException(__FILE__, __LINE__, as_result);
             }
