@@ -32,6 +32,10 @@
 
 #include "catch_amalgamated.hpp"
 
+#include <future>
+#include <thread>
+
+#include "NetSockets.h"
 #include "NetworkServer.h"
 #include "Test_BakerHelpers.h"
 
@@ -40,6 +44,22 @@ FO_BEGIN_NAMESPACE
 namespace
 {
     static std::atomic_uint16_t TestServerPort {47000};
+
+    template<typename Predicate>
+    auto WaitForCondition(Predicate&& predicate, std::chrono::milliseconds timeout = std::chrono::milliseconds {1000}) -> bool
+    {
+        const auto deadline = std::chrono::steady_clock::now() + timeout;
+
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (predicate()) {
+                return true;
+            }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds {5});
+        }
+
+        return predicate();
+    }
 
     static auto MakeServerNetworkSettings() -> GlobalSettings
     {
@@ -134,5 +154,70 @@ TEST_CASE("NetworkServerInterthreadBuffersDispatchesAndShutsDown")
 
     CHECK(InterthreadListeners.count(port) == 0);
 }
+
+#if FO_HAVE_ASIO
+TEST_CASE("NetworkServerAsioRearmsAcceptAfterCallbackException")
+{
+    REQUIRE(net_sockets::startup());
+
+    auto settings = MakeServerNetworkSettings();
+
+    std::atomic_int callback_count {};
+    std::promise<shared_ptr<NetworkServerConnection>> second_connection_promise;
+    auto second_connection_future = second_connection_promise.get_future();
+
+    uint16_t port = 0;
+    string startup_error;
+    unique_ptr<NetworkServer> server;
+
+    for (int32_t attempt = 0; attempt != 64 && !server; ++attempt) {
+        port = TestServerPort.fetch_add(1);
+        BakerTests::OverrideSetting(settings.ServerPort, port);
+
+        try {
+            server = NetworkServer::StartAsioServer(settings, [&](shared_ptr<NetworkServerConnection> conn) {
+                const auto callback_index = callback_count.fetch_add(1);
+
+                if (callback_index == 0) {
+                    throw std::runtime_error("test accept callback failure");
+                }
+
+                second_connection_promise.set_value(std::move(conn));
+            });
+        }
+        catch (const std::exception& ex) {
+            startup_error = ex.what();
+        }
+    }
+
+    INFO(startup_error);
+    REQUIRE(server != nullptr);
+
+    const auto shutdown = scope_exit([&server]() noexcept {
+        safe_call([&server] {
+            if (server) {
+                server->Shutdown();
+            }
+        });
+    });
+
+    tcp_socket first_client;
+    REQUIRE(first_client.connect("127.0.0.1", port));
+    REQUIRE(WaitForCondition([&callback_count] { return callback_count.load() >= 1; }));
+    first_client.close();
+
+    tcp_socket second_client;
+    REQUIRE(second_client.connect("127.0.0.1", port));
+    REQUIRE(second_connection_future.wait_for(std::chrono::seconds {1}) == std::future_status::ready);
+
+    auto second_connection = second_connection_future.get();
+    REQUIRE(second_connection != nullptr);
+    CHECK_FALSE(second_connection->GetHost().empty());
+    CHECK(second_connection->GetPort() != 0);
+
+    second_connection->Disconnect();
+    second_client.close();
+}
+#endif
 
 FO_END_NAMESPACE
