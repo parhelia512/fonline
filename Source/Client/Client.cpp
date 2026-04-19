@@ -731,7 +731,7 @@ void ClientEngine::Net_OnInitData()
             FO_RUNTIME_ASSERT(name_len > 0);
             const auto fname = string(reader.ReadPtr<char>(name_len), name_len);
             const auto size = reader.Read<uint32_t>();
-            const auto hash = reader.Read<uint32_t>();
+            const auto hash = reader.Read<uint64_t>();
 
             ignore_unused(hash);
 

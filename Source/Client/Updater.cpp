@@ -260,7 +260,7 @@ void Updater::Net_OnInitData()
             FO_RUNTIME_ASSERT(name_len > 0);
             const auto fname = string(reader.ReadPtr<char>(name_len), name_len);
             const auto size = reader.Read<uint32_t>();
-            const auto hash = reader.Read<uint32_t>();
+            const auto hash = reader.Read<uint64_t>();
 
             // Check hash
             if (auto file = resources.ReadFileHeader(fname)) {
@@ -270,7 +270,7 @@ void Updater::Net_OnInitData()
                     // Hashing::MurmurHash2(file2.GetBuf(), file2.GetSize());
                 }
 
-                if (strex(file_hash).to_uint32() == hash) {
+                if (strex(file_hash).to_uint64() == hash) {
                     continue;
                 }*/
 

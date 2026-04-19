@@ -375,7 +375,7 @@ ServerEngine::ServerEngine(GlobalSettings& settings, FileSystem&& resources) :
                 writer.Write<int16_t>(numeric_cast<int16_t>(file.GetPath().length()));
                 writer.WritePtr(file.GetPath().data(), file.GetPath().length());
                 writer.Write<uint32_t>(numeric_cast<uint32_t>(data.size()));
-                writer.Write<uint32_t>(numeric_cast<uint32_t>(hashing_ex::hash(data.data(), data.size())));
+                writer.Write<uint64_t>(hashing_ex::hash(data.data(), data.size()));
             };
 
             for (const auto& resource_entry : Settings.ClientResourceEntries) {
